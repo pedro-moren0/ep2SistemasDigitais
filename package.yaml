@@ -1,6 +1,6 @@
-name:                ep1SistemasDigitais
+name:                ep2
 version:             0.1.0.0
-github:              "githubuser/ep1SistemasDigitais"
+github:              "githubuser/ep2"
 license:             BSD-3-Clause
 author:              "Author name here"
 maintainer:          "example@example.com"
@@ -17,10 +17,20 @@ extra-source-files:
 # To avoid duplicated efforts in documentation and dealing with the
 # complications of embedding Haddock markup inside cabal files, it is
 # common to point users to the README.md file.
-description:         Please see the README on GitHub at <https://github.com/githubuser/ep1SistemasDigitais#readme>
+description:         Please see the README on GitHub at <https://github.com/githubuser/ep2#readme>
 
 dependencies:
 - base >= 4.7 && < 5
+- grpc-haskell
+- grpc-haskell-core
+- proto3-suite
+- proto3-wire
+- containers
+- vector
+- deepseq
+- bytestring
+- text
+- aeson
 
 ghc-options:
 - -Wall
@@ -37,7 +47,7 @@ library:
   source-dirs: src
 
 executables:
-  ep1SistemasDigitais-exe:
+  ep2-exe:
     main:                Main.hs
     source-dirs:         app
     ghc-options:
@@ -45,10 +55,10 @@ executables:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
-    - ep1SistemasDigitais
+    - ep2
 
 tests:
-  ep1SistemasDigitais-test:
+  ep2-test:
     main:                Spec.hs
     source-dirs:         test
     ghc-options:
@@ -56,4 +66,7 @@ tests:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
-    - ep1SistemasDigitais
+    - ep2
+    - QuickCheck
+    - tasty-hunit
+    - tasty-quickcheck

@@ -18,7 +18,7 @@
 # resolver: ./custom-snapshot.yaml
 # resolver: https://example.com/snapshots/2023-01-01.yaml
 resolver:
-  url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/22/30.yaml
+  url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/20/26.yaml
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
@@ -40,7 +40,21 @@ packages:
 # - git: https://github.com/commercialhaskell/stack.git
 #   commit: e7b331f14bcffb8367cd58fbfc8b40ec7642100a
 #
-# extra-deps: []
+extra-deps:
+  # grpc-haskell
+  - git: git@github.com:awakesecurity/gRPC-haskell.git
+    commit: '4b3b04d0ac9d1db53033fb4f0b6864f25b6e945d'
+    subdirs:
+    - .     # grpc-haskell
+    - core  # grpc-haskell-core
+  # proto3-suite
+  - git: git@github.com:awakesecurity/proto3-suite.git
+    commit: 'bec9d40e2767143deed5b2d451197191f1d8c7d5' 
+  - large-generics-0.2.1
+  - large-records-0.4
+  # proto3-wire
+  - git: git@github.com:awakesecurity/proto3-wire.git
+    commit: '2d48ee3446858f08a8c75130c90d770c377569bd'
 
 # Override default flag values for local packages and extra-deps
 # flags: {}

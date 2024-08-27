@@ -1,4 +1,4 @@
-# Changelog for `ep1SistemasDigitais`
+# Changelog for `ep2`
 
 All notable changes to this project will be documented in this file.
 
