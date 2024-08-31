@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+package chord;
+
+service Chord {
+  // TODO: implementar rpcs
+}
+
+message JOIN {
+  fixed64 joinedId = 1;
+  string joinedIp = 2;
+  uint32 joinedPort = 3;
+  int32 joinedIdTest = 4;
+}
+
+message JOIN_OK {
+  fixed64 joinedId = 1;
+  int32 joinedIdTest = 6;
+  string predIp = 2;
+  uint32 predPort = 3;
+  string succIp = 4;
+  uint32 succPort = 5;
+}
+
+message NEW_NODE {
+  string succIp = 1;
+  uint32 succPort = 2;
+}
+
+message LEAVE {
+  fixed64 predId = 1;
+  int32 predIdTest = 4;
+  string predIp = 2;
+  uint32 predPort = 3;
+}
+
+message NODE_GONE {
+  fixed64 succId = 1;
+  int32 succIdTest = 4;
+  string succIp = 2;
+  uint32 succPort = 3;
+}
+
+message STORE {
+  fixed64 key = 1;
+  int32 keyTest = 2;
+  int32 size = 3;
+  bytes value = 4;
+}
+
+message RETRIEVE {
+  fixed64 key = 1;
+  int32 keyTest = 2;
+  fixed64 requirerId = 3;
+  int32 requirerIdTes = 4;
+  string requirerIp = 5;
+  uint32 requirerPort = 6;
+}
+
+message OK {
+  fixed64 key = 1;
+  int32 keyTest = 2;
+  int32 size = 3;
+  bytes value = 4;
+}
+
+message NOT_FOUND { }
+
+message TRANSFER {
+
+}
