@@ -3,69 +3,105 @@ syntax = "proto3";
 package chord;
 
 service Chord {
-  // TODO: implementar rpcs
+  rpc Join(JOIN) returns (JOIN_OK) {}
+  rpc Route (ROUTE) returns (ROUTE_OK) {}
+  rpc NewNode (NEW_NODE) returns (NEW_NODE_OK) {}
+  rpc Leave (LEAVE) returns (LEAVE_OK) {}
+  rpc NodeGone (NODE_GONE) returns (NODE_GONE_OK) {}
+  rpc Store (STORE) returns (STORE_OK) {}
+  rpc Retrieve (RETRIEVE) returns (RETRIEVE_RESPONSE) {}
+  rpc Transfer (stream TRANSFER) returns (TRANSFER_OK) {}
 }
 
 message JOIN {
-  fixed64 joinedId = 1;
-  string joinedIp = 2;
-  uint32 joinedPort = 3;
-  int32 joinedIdTest = 4;
+  fixed64 joinedId = 11;
+  string joinedIp = 12;
+  uint32 joinedPort = 13;
+  int32 joinedIdTest = 2003;
 }
 
 message JOIN_OK {
-  fixed64 joinedId = 1;
-  int32 joinedIdTest = 6;
-  string predIp = 2;
-  uint32 predPort = 3;
-  string succIp = 4;
-  uint32 succPort = 5;
+  fixed64 joinedId = 17;
+  string predIp = 18;
+  uint32 predPort = 19;
+  string succIp = 20;
+  uint32 succPort = 21;
+  int32 joinedIdTest = 2004;
 }
 
 message NEW_NODE {
-  string succIp = 1;
-  uint32 succPort = 2;
+  string succIp = 22;
+  uint32 succPort = 23;
 }
+
+message NEW_NODE_OK { }
 
 message LEAVE {
-  fixed64 predId = 1;
-  int32 predIdTest = 4;
-  string predIp = 2;
-  uint32 predPort = 3;
+  fixed64 predId = 14;
+  string predIp = 15;
+  uint32 predPort = 16;
+  int32 predIdTest = 2005;
 }
+
+message LEAVE_OK { }
 
 message NODE_GONE {
-  fixed64 succId = 1;
-  int32 succIdTest = 4;
-  string succIp = 2;
-  uint32 succPort = 3;
+  fixed64 succId = 24;
+  string succIp = 25;
+  uint32 succPort = 26;
+  int32 succIdTest = 2006;
 }
+
+message NODE_GONE_OK { }
 
 message STORE {
-  fixed64 key = 1;
-  int32 keyTest = 2;
-  int32 size = 3;
-  bytes value = 4;
+  fixed64 key = 3;
+  int32 size = 4;
+  bytes value = 5;
+  int32 keyTest = 2000;
 }
 
+message STORE_OK { }
+
 message RETRIEVE {
-  fixed64 key = 1;
-  int32 keyTest = 2;
-  fixed64 requirerId = 3;
-  int32 requirerIdTes = 4;
-  string requirerIp = 5;
-  uint32 requirerPort = 6;
+  fixed64 key = 6;
+  fixed64 requirerId = 7;
+  int32 requirerIdTes = 8;
+  string requirerIp = 9;
+  uint32 requirerPort = 10;
+  int32 keyTest = 2001;
 }
 
 message OK {
-  fixed64 key = 1;
-  int32 keyTest = 2;
-  int32 size = 3;
-  bytes value = 4;
+  fixed64 key = 27;
+  int32 size = 28;
+  bytes value = 29;
+  int32 keyTest = 2007;
 }
 
 message NOT_FOUND { }
 
-message TRANSFER {
-
+message RETRIEVE_RESPONSE {
+  oneof response {
+    OK ok = 33;
+    NOT_FOUND notFound = 34;
+  }
 }
+
+message TRANSFER {
+  fixed64 key = 1;
+  bytes value = 2;
+  int32 keyTest = 2002;
+}
+
+message TRANSFER_OK { }
+
+message ROUTE {
+  oneof routedMessage {
+    JOIN join = 30;
+    STORE store = 31;
+    RETRIEVE retrieve = 32;
+  }
+}
+
+message ROUTE_OK {}
