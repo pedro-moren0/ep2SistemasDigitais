@@ -25,7 +25,10 @@ source-repository head
 
 library
   exposed-modules:
+      Chord
       Lib
+      Peer
+      ServerSide
   other-modules:
       Paths_ep2
   autogen-modules:

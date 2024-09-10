@@ -1,6 +1,15 @@
 module Main (main) where
 
-import Lib
+import System.Environment (getArgs)
+import Text.Read (readMaybe)
+
+import Peer as P (tui)
 
 main :: IO ()
-main = someFunc
+main = do
+  args <- getArgs
+  case args of
+    [port] -> case (readMaybe port :: Maybe Int) of
+      (Just portNum) -> P.tui portNum
+      _ -> print "Não foi possível converter o argumento fornecido em um número de porta"
+    _ -> print "Argumento inválido"
