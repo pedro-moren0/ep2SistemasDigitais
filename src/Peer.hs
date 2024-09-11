@@ -1,6 +1,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE GADTs #-}
+
 module Peer (module Peer) where
 
 import Chord
@@ -14,8 +15,9 @@ import Network.GRPC.LowLevel.Call
 import Data.Text.Encoding
 import Data.ByteString.Char8 as BSC8 hiding (getLine, putStrLn)
 import Data.Text.Lazy as TL
-import Data.Bits
+import Control.Concurrent.MVar
 import Data.Int (Int32)
+import Control.Exception
 
 menuOptionList :: String
 menuOptionList =
@@ -33,10 +35,10 @@ hashTest = fromIntegral
 
 tui :: Port -> IO ()
 tui portNumber = do
-  (predecesorNode :: MVar PredecessorNode) <- newEmptyMVar
+  (predecessorNode :: MVar PredecessorNode) <- newEmptyMVar
   (successorNode :: MVar SuccessorNode) <- newEmptyMVar
-  _ <- forkIO $ runServer (Host $ BSC8.pack "localhost") portNumber predecesorNode successorNode
-  loop predecesorNode successorNode
+  _ <- forkIO $ runServer (Host $ BSC8.pack "localhost") portNumber predecessorNode successorNode
+  loop predecessorNode successorNode
     where
       loop :: MVar PredecessorNode -> MVar SuccessorNode -> IO ()
       loop predecessorNode successorNode = do
@@ -44,10 +46,8 @@ tui portNumber = do
         s <- getLine
         case s of
           "1" -> do
-            -- TESTE --
             otherPort <- getLine
             let iOtherPort = read otherPort :: Int
-            -- TESTE --
             join predecessorNode successorNode (DHTNode (Host $ BSC8.pack "localhost") (Port iOtherPort))
             loop predecessorNode successorNode
           "2" -> do
@@ -55,32 +55,66 @@ tui portNumber = do
             loop predecessorNode successorNode
           "x" -> return ()
           _ -> do
-            putStrLn "opcao invalida"
+            putStrLn "Opção inválida"
             loop predecessorNode successorNode
 
-
--- TODO: Remover o terceiro parametro DHTNode
 join :: MVar PredecessorNode -> MVar SuccessorNode -> DHTNode -> IO ()
-join mPred mSucc (DHTNode hostADT@(Host host) portADT@(Port port)) = withGRPCClient clientConfig $ \client -> do
-  let requestMessage = JOIN { joinJoinedId = 0, -- TODO: Implementar hashing do ip e porta
-    joinJoinedIp = (TL.fromStrict . decodeUtf8) host,
-    joinJoinedPort = bit port,
-    joinJoinedIdTest = hashTest port
-    }
-
+join mPred mSucc (DHTNode (Host host) (Port port)) = withGRPCClient clientConfig $ \client -> do
+  let requestMessage = JOIN
+        { joinJoinedId = 0  -- Substitua com um ID adequado
+        , joinJoinedIp = TL.fromStrict $ decodeUtf8 host
+        , joinJoinedPort = fromIntegral port
+        , joinJoinedIdTest = hashTest port
+        }
+  
   Chord{ chordJoin } <- chordClient client
   fullRes <- chordJoin (ClientNormalRequest requestMessage 10 mempty)
   case fullRes of
     (ClientNormalResponse _res _meta1 _meta2 _status _details) -> do
-      print ""
+      putStrLn "Join request sent successfully."
     (ClientErrorResponse err) -> do
       print err
   return ()
   where
     clientConfig =
       ClientConfig
-        { clientServerEndpoint = endpoint hostADT portADT
+        { clientServerEndpoint = endpoint (Host $ host) (Port $ fromIntegral port)
         , clientArgs = []
         , clientSSLConfig = Nothing
         , clientAuthority = Nothing
         }
+
+leave :: MVar SuccessorNode -> IO ()
+leave mSucc = do
+  -- Obtém o successor atual
+  DHTNode (Host hostBS) (Port port) <- readMVar mSucc
+  
+  -- Converte o IP para Text e cria a mensagem LEAVE
+  let succIp = TL.fromStrict $ decodeUtf8 hostBS
+  let requestMessage = LEAVE
+        { leavePredId = 0  -- Substitua com um ID adequado
+        , leavePredIp = succIp
+        , leavePredPort = fromIntegral port
+        , leavePredIdTest = 0  -- Substitua com um ID adequado
+        }
+  
+  -- Cria o cliente gRPC e envia a solicitação
+  result <- try $ withGRPCClient (clientConfig hostBS port) $ \client -> do
+    Chord { chordLeave } <- chordClient client
+    chordLeave (ClientNormalRequest requestMessage 10 mempty)
+  
+  -- Processa a resposta
+  case result of
+    Left err -> putStrLn $ "Erro ao enviar request LEAVE: " ++ show (err :: SomeException)
+    Right (ClientNormalResponse _res _meta1 _meta2 _status _details) -> putStrLn "Leave request sent successfully."
+    Right (ClientErrorResponse err) -> putStrLn $ "Erro na resposta LEAVE: " ++ show err
+  where
+    -- Configuração do cliente gRPC
+    clientConfig host port =
+      ClientConfig
+        { clientServerEndpoint = endpoint (Host $ host) (Port $ fromIntegral port)
+        , clientArgs = []
+        , clientSSLConfig = Nothing
+        , clientAuthority = Nothing
+        }
+
