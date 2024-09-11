@@ -4,16 +4,18 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module ServerSide (module ServerSide) where
+module ServerSide (runServer) where
 
 import Chord
 import Network.GRPC.HighLevel.Generated
 
-runServer :: IO ()
-runServer = chordServer handlers options
-
-options :: ServiceOptions
-options = defaultServiceOptions
+runServer :: Host -> Port -> IO ()
+runServer host port = chordServer
+  handlers
+  defaultServiceOptions
+    { serverHost = host
+    , serverPort = port
+    }
 
 handlers :: Chord ServerRequest ServerResponse
 handlers = Chord { chordJoin = joinHandler
