@@ -56,7 +56,7 @@ joinHandler :: MVar PredecessorNode ->
 joinHandler
   mPred
   mSucc
-  (ServerNormalRequest _metadata (JOIN joinId joinIp joinPort _)) = do
+  (ServerNormalRequest _metadata (JOIN joinId joinIp joinPort joinIdTest)) = do
   -- Converte o IP e a porta do novo nó para o formato apropriado
   let newNode = DHTNode (textToHost joinIp) (toPort joinPort)
 
@@ -195,7 +195,17 @@ retrieveHandler _ = do
 
 
 
-transferHandler :: ServerRequest 'ClientStreaming TRANSFER TRANSFEROK -> IO (ServerResponse 'ClientStreaming TRANSFEROK)
-transferHandler _ = do
-  -- Implementar o comportamento desejado ou lançar uma exceção
-  error "transferHandler não implementado"
+transferHandler :: ServerRequest 'ClientStreaming TRANSFER TRANSFEROK ->
+  IO (ServerResponse 'ClientStreaming TRANSFEROK)
+transferHandler _ = undefined
+  -- ler a mensagem do stream: msg <- recv
+  -- salvar os arquivos em uma pasta com o id do no
+  -- os arquivos devem ter o nome do campo key (ou keyTest) e os bytes do arquivo
+  --   devem ser os bytes do campo value
+  -- Dica: você tem que fazer um 'case msg of' e testar pelos seguintes casos:
+  --   Left err -> Significa que houve um erro no stream. Tratar a excecao
+  --   Right (Just ...) -> Significa que a mensagem chegou corretamente e mais
+  --     mensagens vao chegar
+  --   Right (Nothing) -> Significa que mais nenhuma mensagem vai chegar desse
+  --     stream
+  -- vide publishHandler do projeto 1

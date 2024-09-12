@@ -112,7 +112,7 @@ leave mSucc = do
     -- Configuração do cliente gRPC
     clientConfig host port =
       ClientConfig
-        { clientServerEndpoint = endpoint (Host $ host) (Port $ fromIntegral port)
+        { clientServerEndpoint = endpoint (Host host) (Port $ fromIntegral port)
         , clientArgs = []
         , clientSSLConfig = Nothing
         , clientAuthority = Nothing
