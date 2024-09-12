@@ -19,6 +19,13 @@ import Data.Text.Encoding (encodeUtf8)
 import GHC.Generics
 import Data.ByteString
 
+import Data.Hashable (hash)
+import qualified GHC.Word
+import qualified Data.ByteString.Char8 as BSC8
+
+
+
+
 
 
 runServer :: Host -> Port -> MVar PredecessorNode -> MVar SuccessorNode -> IO ()
@@ -46,7 +53,8 @@ handlers me mPred mSucc = Chord
   , chordTransfer = transferHandler
   }
 
-
+calculateNodeId :: Host -> Port -> Int
+calculateNodeId (Host ip) (Port port) = (abs (hash (BSC8.unpack ip, port)) `mod` 20) + 1
 
 -- joinHandler: função que trata a requisição de JOIN
 joinHandler :: MVar PredecessorNode ->
@@ -56,43 +64,73 @@ joinHandler :: MVar PredecessorNode ->
 joinHandler
   mPred
   mSucc
-  (ServerNormalRequest _metadata (JOIN joinId joinIp joinPort _)) = do
-  -- Converte o IP e a porta do novo nó para o formato apropriado
-  let newNode = DHTNode (textToHost joinIp) (toPort joinPort)
-
-  -- Log do novo nó tentando se juntar
-  putStrLn $ "Novo nó tentando se juntar: " ++ show newNode
+  (ServerNormalRequest _metadata (JOIN _ joinIp joinPort _)) = do
   
-  -- Obtém o estado atual do sucessor e predecessor
+  let newNode = DHTNode (textToHost joinIp) (toPort joinPort)
+      nodeId = calculateNodeId (textToHost joinIp) (toPort joinPort)
+
+  putStrLn $ "Novo nó tentando se juntar: " ++ show newNode
+
   currentSucc <- tryReadMVar mSucc
   currentPred <- tryReadMVar mPred
-  
+
   case (currentSucc, currentPred) of
-    -- O anel ainda não tem sucessor e predecessor, então o novo nó é o único nó
     (Nothing, Nothing) -> do
-      -- Define o sucessor e o predecessor para o novo nó (ele mesmo)
+      -- Primeiro nó na rede, ele mesmo é seu sucessor e predecessor
       putMVar mSucc newNode
       putMVar mPred newNode
       putStrLn "Novo nó é o único nó no anel, sucessor e predecessor apontam para ele mesmo."
-
-    -- O anel já tem um sucessor e predecessor, então o novo nó deve se integrar ao anel
-    _ -> do
-      -- Atualize o sucessor atual para apontar para o novo nó
+      
+      let response = JOINOK
+            { joinokJoinedId = fromIntegral nodeId
+            , joinokPredIp = joinIp
+            , joinokPredPort = fromIntegral joinPort
+            , joinokSuccIp = joinIp
+            , joinokSuccPort = fromIntegral joinPort
+            , joinokJoinedIdTest = fromIntegral nodeId
+            }
+      return $ ServerNormalResponse response [] StatusOk "join com sucesso"
+    
+    (Just succNode, Just predNode) -> do
+      -- Ajustar o predecessor e sucessor para incluir o novo nó
       putMVar mSucc newNode
-      putStrLn "Novo nó integrado ao anel como sucessor."
-  
-  -- Preencha o JOINOK com valores fictícios ou apropriados
-  let response = JOINOK
-        { joinokJoinedId = 0                 -- Substitua por um valor adequado (ID do nó que está se juntando)
-        , joinokPredIp = joinIp              -- IP do predecessor
-        , joinokPredPort = fromIntegral joinPort  -- Porta do predecessor
-        , joinokSuccIp = joinIp              -- IP do sucessor
-        , joinokSuccPort = fromIntegral joinPort  -- Porta do sucessor
-        , joinokJoinedIdTest = 0             -- Substitua por um valor adequado (teste ou ID adicional, se necessário)
-        }
+      notifyNewNode predNode newNode
 
-  -- Retorne a resposta JOINOK formatada
-  return $ ServerNormalResponse response [] StatusOk "join com sucesso"
+      let response = JOINOK
+            { joinokJoinedId = fromIntegral nodeId
+            , joinokPredIp = hostToText $ getHost predNode
+            , joinokPredPort = portToInt $ getPort predNode
+            , joinokSuccIp = hostToText $ getHost succNode
+            , joinokSuccPort = portToInt $ getPort succNode
+            , joinokJoinedIdTest = fromIntegral nodeId
+            }
+
+      return $ ServerNormalResponse response [] StatusOk "join com sucesso"
+
+  where
+    notifyNewNode :: DHTNode -> DHTNode -> IO ()
+    notifyNewNode predNode newNode = do
+      let newNodeIp = hostToText $ getHost newNode
+          newNodePort = portToInt $ getHost newNode
+      sendNewNodeNotification predNode newNodeIp newNodePort
+
+
+
+sendNewNodeNotification :: DHTNode -> Text -> GHC.Word.Word32 -> IO ()
+sendNewNodeNotification = sendNewNodeNotification
+
+portToInt :: a2 -> GHC.Word.Word32
+portToInt = portToInt
+
+getHost :: DHTNode -> Host
+getHost (DHTNode host _) = host
+
+getPort :: DHTNode -> Port
+getPort (DHTNode _ port) = port
+
+hostToText :: a5 -> Text
+hostToText = hostToText
+
 
 
 

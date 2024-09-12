@@ -31,6 +31,7 @@ dependencies:
 - bytestring
 - text
 - aeson
+- hashable
 
 ghc-options:
 - -Wall
