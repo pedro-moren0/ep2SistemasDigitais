@@ -30,6 +30,7 @@ library
       Lib
       Peer
       ServerSide
+      Utils
   other-modules:
       Paths_ep2
   autogen-modules:

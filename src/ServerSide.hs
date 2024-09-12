@@ -9,39 +9,35 @@ module ServerSide (runServer) where
 
 import Chord
 import DHTTypes
+import Utils
+
 import Network.GRPC.HighLevel.Generated
 import Control.Concurrent
 import Data.Text.Lazy as TL
-
 import qualified Data.Text as T
-
 import Data.Text.Encoding (encodeUtf8)
 import GHC.Generics
 import Data.ByteString
 
 
 
-
-runServer ::
-  Network.GRPC.HighLevel.Generated.Host ->
-  Network.GRPC.HighLevel.Generated.Port ->
-  MVar PredecessorNode ->
-  MVar SuccessorNode ->
-  IO ()
+runServer :: Host -> Port -> MVar PredecessorNode -> MVar SuccessorNode -> IO ()
 runServer host port mPred mSucc = chordServer
-  (handlers mPred mSucc)
+  (handlers (DHTNode host port) mPred mSucc)
   defaultServiceOptions
     { serverHost = host
     , serverPort = port
     }
 
-handlers :: 
+
+
+handlers :: Me ->
   MVar PredecessorNode ->
   MVar SuccessorNode ->
   Chord ServerRequest ServerResponse
-handlers mPred mSucc = Chord
+handlers me mPred mSucc = Chord
   { chordJoin = joinHandler mPred mSucc
-  , chordRoute = routeHandler
+  , chordRoute = routeHandler me mPred mSucc
   , chordNewNode = newNodeHandler
   , chordLeave = leaveHandler mPred
   , chordNodeGone = nodeGoneHandler mSucc
@@ -51,30 +47,18 @@ handlers mPred mSucc = Chord
   }
 
 
--- v0
--- Definição da estrutura DHTNode (exemplo)
-data DHTNode = DHTNode
-  { host :: Network.GRPC.HighLevel.Generated.Host
-  , port :: Network.GRPC.HighLevel.Generated.Port
-   } deriving (Show, Generic)
-
--- Exemplo de definição de Host e Port para compatibilidade
-newtype Host = Host { unHost :: ByteString }
-  deriving (Show, Generic)
-
-newtype Port = Port { unPort :: Int }
-  deriving (Show, Generic)
-
-instance Show DHTTypes.DHTNode where
-  show (DHTTypes.DHTNode (Network.GRPC.HighLevel.Generated.Host h) (Network.GRPC.HighLevel.Generated.Port p)) =
-    "DHTNode { host = " ++ show h ++ ", port = " ++ show p ++ " }"
-
 
 -- joinHandler: função que trata a requisição de JOIN
-joinHandler :: MVar DHTTypes.DHTNode -> MVar DHTTypes.DHTNode -> ServerRequest 'Normal JOIN JOINOK -> IO (ServerResponse 'Normal JOINOK)
-joinHandler mPred mSucc (ServerNormalRequest _metadata (JOIN _ joinIp joinPort _)) = do
+joinHandler :: MVar PredecessorNode ->
+  MVar SuccessorNode ->
+  ServerRequest 'Normal JOIN JOINOK ->
+  IO (ServerResponse 'Normal JOINOK)
+joinHandler
+  mPred
+  mSucc
+  (ServerNormalRequest _metadata (JOIN joinId joinIp joinPort _)) = do
   -- Converte o IP e a porta do novo nó para o formato apropriado
-  let newNode = DHTTypes.DHTNode (Network.GRPC.HighLevel.Generated.Host $ encodeUtf8 $ TL.toStrict joinIp) (Network.GRPC.HighLevel.Generated.Port $ fromIntegral joinPort)
+  let newNode = DHTNode (textToHost joinIp) (toPort joinPort)
 
   -- Log do novo nó tentando se juntar
   putStrLn $ "Novo nó tentando se juntar: " ++ show newNode
@@ -112,10 +96,16 @@ joinHandler mPred mSucc (ServerNormalRequest _metadata (JOIN _ joinIp joinPort _
 
 
 
-
-
-routeHandler :: ServerRequest 'Normal ROUTE ROUTEOK -> IO (ServerResponse 'Normal ROUTEOK)
-routeHandler (ServerNormalRequest _metadata (ROUTE requestData)) = do
+routeHandler :: Me ->
+  MVar PredecessorNode ->
+  MVar SuccessorNode ->
+  ServerRequest 'Normal ROUTE ROUTEOK ->
+  IO (ServerResponse 'Normal ROUTEOK)
+routeHandler
+  me
+  mPred
+  mSucc
+  (ServerNormalRequest _metadata (ROUTE requestData)) = do
   -- Lógica para encaminhar a solicitação para o nó apropriado
   -- Esta é uma parte crítica e pode depender de como você implementa o roteamento
   -- Pode envolver comunicação com o sucessor ou predecessor, dependendo da solicitação
@@ -127,10 +117,12 @@ routeHandler (ServerNormalRequest _metadata (ROUTE requestData)) = do
   let response = ROUTEOK -- Assumindo que ROUTEOK é o tipo de resposta esperado
   return $ ServerNormalResponse response [] StatusOk ""
 
+
+
 newNodeHandler :: ServerRequest 'Normal NEWNODE NEWNODEOK -> IO (ServerResponse 'Normal NEWNODEOK)
 newNodeHandler (ServerNormalRequest _metadata (NEWNODE newNodeIp newNodePort)) = do
   -- Converte o IP e a porta do novo nó para o formato apropriado
-  let newNode = DHTTypes.DHTNode (Network.GRPC.HighLevel.Generated.Host $ encodeUtf8 $ TL.toStrict newNodeIp) (Network.GRPC.HighLevel.Generated.Port $ fromIntegral newNodePort)
+  let newNode = DHTNode (Host $ encodeUtf8 $ TL.toStrict newNodeIp) (Port $ fromIntegral newNodePort)
 
   -- Lógica para lidar com o novo nó (por exemplo, atualizar o sucessor ou predecessor)
   -- Isso pode variar conforme a lógica do protocolo Chord
@@ -143,10 +135,11 @@ newNodeHandler (ServerNormalRequest _metadata (NEWNODE newNodeIp newNodePort)) =
   return $ ServerNormalResponse response [] StatusOk ""
 
 
+
 leaveHandler ::
-  MVar PredecessorNode ->  -- Predecessor atual do nó
-  ServerRequest 'Normal LEAVE LEAVEOK ->  -- Requisição LEAVE e resposta esperada LEAVEOK
-  IO (ServerResponse 'Normal LEAVEOK)  -- Resposta do servidor
+  MVar PredecessorNode ->
+  ServerRequest 'Normal LEAVE LEAVEOK ->
+  IO (ServerResponse 'Normal LEAVEOK)
 leaveHandler mPred (ServerNormalRequest _metadata (LEAVE _ predIp predPort _)) = do
   -- Obtém o predecessor atual
   currentPred <- takeMVar mPred
@@ -155,7 +148,7 @@ leaveHandler mPred (ServerNormalRequest _metadata (LEAVE _ predIp predPort _)) =
   let predIpBS = encodeUtf8 $ TL.toStrict predIp
   
   -- Atualiza o predecessor com os valores recebidos na requisição de LEAVE
-  putMVar mPred (DHTTypes.DHTNode (Network.GRPC.HighLevel.Generated.Host predIpBS) (Network.GRPC.HighLevel.Generated.Port $ fromIntegral predPort))
+  putMVar mPred (DHTNode (Host predIpBS) (Port $ fromIntegral predPort))
   
   -- Cria a resposta LEAVEOK para enviar de volta
   let response = LEAVEOK 
@@ -165,25 +158,10 @@ leaveHandler mPred (ServerNormalRequest _metadata (LEAVE _ predIp predPort _)) =
 
 
 
-    -- pegar o predecessor: pred <- take mPred
-    -- atualizar o valor de mPred com o ip e porta respondidos por LEAVE:
-    --    put mPred (DHTNode predIp predPort)
-    -- responder a requisicao de LEAVE:
-    --    return $
-    --      ServerNormalResponse (
-    --        LEAVE_OK
-    --        []
-    --        StatusOk
-    --        "uma mensagem com os detalhes"
-    --      )
-
-
--- Se tiver tempo, implementar esse handler tambem. Ele eh
--- analogo ao leaveHandler, mas agora trabalhando com o mSucc
 nodeGoneHandler ::
-  MVar SuccessorNode ->  -- Sucessor atual do nó
-  ServerRequest 'Normal NODEGONE NODEGONEOK ->  -- Requisição NODEGONE e resposta esperada NODEGONEOK
-  IO (ServerResponse 'Normal NODEGONEOK)  -- Resposta do servidor
+  MVar SuccessorNode ->
+  ServerRequest 'Normal NODEGONE NODEGONEOK ->
+  IO (ServerResponse 'Normal NODEGONEOK)
 nodeGoneHandler mSucc (ServerNormalRequest _metadata (NODEGONE _ succIp succPort _)) = do
   -- Obtém o sucessor atual
   currentSucc <- takeMVar mSucc
@@ -192,7 +170,7 @@ nodeGoneHandler mSucc (ServerNormalRequest _metadata (NODEGONE _ succIp succPort
   let succIpBS = encodeUtf8 $ TL.toStrict succIp
 
   -- Atualiza o sucessor com os valores recebidos na requisição de NODEGONE
-  putMVar mSucc (DHTTypes.DHTNode (Network.GRPC.HighLevel.Generated.Host succIpBS) (Network.GRPC.HighLevel.Generated.Port $ fromIntegral succPort))
+  putMVar mSucc (DHTNode (Host succIpBS) (Port $ fromIntegral succPort))
   
   -- Cria a resposta NODEGONEOK para enviar de volta
   let response = NODEGONEOK -- Se NODEGONEOK não possui campos adicionais, pode ser usado diretamente.
@@ -208,10 +186,14 @@ storeHandler _ = do
   -- Implementar o comportamento desejado ou lançar uma exceção
   error "storeHandler não implementado"
 
+
+
 retrieveHandler :: ServerRequest 'Normal RETRIEVE RETRIEVERESPONSE -> IO (ServerResponse 'Normal RETRIEVERESPONSE)
 retrieveHandler _ = do
   -- Implementar o comportamento desejado ou lançar uma exceção
   error "retrieveHandler não implementado"
+
+
 
 transferHandler :: ServerRequest 'ClientStreaming TRANSFER TRANSFEROK -> IO (ServerResponse 'ClientStreaming TRANSFEROK)
 transferHandler _ = do
