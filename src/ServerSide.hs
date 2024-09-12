@@ -21,7 +21,6 @@ import Data.ByteString
 
 import Data.Hashable (hash)
 import qualified GHC.Word
-import qualified Data.ByteString.Char8 as BSC8
 
 
 
@@ -54,7 +53,7 @@ handlers me mPred mSucc = Chord
   }
 
 calculateNodeId :: Host -> Port -> Int
-calculateNodeId (Host ip) (Port port) = (abs (hash (BSC8.unpack ip, port)) `mod` 20) + 1
+calculateNodeId (Host ip) (Port port) = hash (ip, port)
 
 -- joinHandler: função que trata a requisição de JOIN
 joinHandler :: MVar PredecessorNode ->
@@ -114,7 +113,8 @@ joinHandler
           newNodePort = portToInt $ getHost newNode
       sendNewNodeNotification predNode newNodeIp newNodePort
 
-
+getPort :: PredecessorNode -> a1
+getPort = getPort
 
 sendNewNodeNotification :: DHTNode -> Text -> GHC.Word.Word32 -> IO ()
 sendNewNodeNotification = sendNewNodeNotification
@@ -122,11 +122,8 @@ sendNewNodeNotification = sendNewNodeNotification
 portToInt :: a2 -> GHC.Word.Word32
 portToInt = portToInt
 
-getHost :: DHTNode -> Host
-getHost (DHTNode host _) = host
-
-getPort :: DHTNode -> Port
-getPort (DHTNode _ port) = port
+getHost :: PredecessorNode -> a4
+getHost = getHost
 
 hostToText :: a5 -> Text
 hostToText = hostToText
