@@ -3,15 +3,22 @@ syntax = "proto3";
 package chord;
 
 service Chord {
-  rpc Join(JOIN) returns (JOIN_OK) {}
-  rpc Route (ROUTE) returns (ROUTE_OK) {}
+  rpc JoinV2(JOIN) returns (JOIN_REQUESTED) {}
+  rpc JoinOk(JOIN_OK) returns (JOIN_SUCCESSFUL) {}
   rpc NewNode (NEW_NODE) returns (NEW_NODE_OK) {}
   rpc Leave (LEAVE) returns (LEAVE_OK) {}
   rpc NodeGone (NODE_GONE) returns (NODE_GONE_OK) {}
   rpc Store (STORE) returns (STORE_OK) {}
   rpc Retrieve (RETRIEVE) returns (RETRIEVE_RESPONSE) {}
   rpc Transfer (stream TRANSFER) returns (TRANSFER_OK) {}
+
+  rpc Join(JOIN) returns (JOIN_OK) { option deprecated = true; }
+  rpc Route (ROUTE) returns (ROUTE_OK) { option deprecated = true; }
 }
+
+message JOIN_REQUESTED { }
+
+message JOIN_SUCCESSFUL { }
 
 message JOIN {
   fixed64 joinedId = 11;
@@ -97,6 +104,7 @@ message TRANSFER {
 message TRANSFER_OK { }
 
 message ROUTE {
+  option deprecated = true;
   oneof routedMessage {
     JOIN join = 30;
     STORE store = 31;
@@ -104,4 +112,4 @@ message ROUTE {
   }
 }
 
-message ROUTE_OK {}
+message ROUTE_OK { option deprecated = true; }
