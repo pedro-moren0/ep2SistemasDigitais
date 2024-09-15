@@ -83,6 +83,11 @@ joinV2Handler
       myHash = hashTestFromDHTNode me
       predHash = hashTestFromDHTNode pred
 
+    if myHash > predHash then
+      joinId Prelude.elem [pred + 1 .. myHash]
+    else
+      joinId Prelude.elem ([pred + 1 .. (maxHash - 1)] ++ [0 .. myHash])
+
     -- se o id do novo nó é responsabilidade deste nó
     _ <- if isRespTest (fromIntegral joinIdTest) myHash predHash 8
       then do
