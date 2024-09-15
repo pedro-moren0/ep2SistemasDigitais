@@ -49,10 +49,10 @@ import Network.GRPC.HighLevel.Server as HsGRPC
 import Network.GRPC.HighLevel.Server.Unregistered as HsGRPC
     ( serverLoop )
 data Chord request response
-  = Chord {chordJoin :: ((request 'HsGRPC.Normal Chord.JOIN Chord.JOINOK)
-                         -> (Hs.IO (response 'HsGRPC.Normal Chord.JOINOK))),
-           chordRoute :: ((request 'HsGRPC.Normal Chord.ROUTE Chord.ROUTEOK)
-                          -> (Hs.IO (response 'HsGRPC.Normal Chord.ROUTEOK))),
+  = Chord {chordJoinV2 :: ((request 'HsGRPC.Normal Chord.JOIN Chord.JOINREQUESTED)
+                           -> (Hs.IO (response 'HsGRPC.Normal Chord.JOINREQUESTED))),
+           chordJoinOk :: ((request 'HsGRPC.Normal Chord.JOINOK Chord.JOINSUCCESSFUL)
+                           -> (Hs.IO (response 'HsGRPC.Normal Chord.JOINSUCCESSFUL))),
            chordNewNode :: ((request 'HsGRPC.Normal Chord.NEWNODE Chord.NEWNODEOK)
                             -> (Hs.IO (response 'HsGRPC.Normal Chord.NEWNODEOK))),
            chordLeave :: ((request 'HsGRPC.Normal Chord.LEAVE Chord.LEAVEOK)
@@ -64,25 +64,30 @@ data Chord request response
            chordRetrieve :: ((request 'HsGRPC.Normal Chord.RETRIEVE Chord.RETRIEVERESPONSE)
                              -> (Hs.IO (response 'HsGRPC.Normal Chord.RETRIEVERESPONSE))),
            chordTransfer :: ((request 'HsGRPC.ClientStreaming Chord.TRANSFER Chord.TRANSFEROK)
-                             -> (Hs.IO (response 'HsGRPC.ClientStreaming Chord.TRANSFEROK)))}
+                             -> (Hs.IO (response 'HsGRPC.ClientStreaming Chord.TRANSFEROK))),
+           chordJoin :: ((request 'HsGRPC.Normal Chord.JOIN Chord.JOINOK)
+                         -> (Hs.IO (response 'HsGRPC.Normal Chord.JOINOK))),
+           chordRoute :: ((request 'HsGRPC.Normal Chord.ROUTE Chord.ROUTEOK)
+                          -> (Hs.IO (response 'HsGRPC.Normal Chord.ROUTEOK)))}
   deriving (Hs.Generic)
 chordServer ::
   (Chord HsGRPC.ServerRequest HsGRPC.ServerResponse)
   -> HsGRPC.ServiceOptions -> Hs.IO ()
 chordServer
-  Chord {chordJoin, chordRoute, chordNewNode, chordLeave,
-         chordNodeGone, chordStore, chordRetrieve, chordTransfer}
+  Chord {chordJoinV2, chordJoinOk, chordNewNode, chordLeave,
+         chordNodeGone, chordStore, chordRetrieve, chordTransfer, chordJoin,
+         chordRoute}
   (ServiceOptions serverHost serverPort useCompression
                   userAgentPrefix userAgentSuffix initialMetadata sslConfig logger
                   serverMaxReceiveMessageLength serverMaxMetadataSize)
   = HsGRPC.serverLoop
       HsGRPC.defaultOptions
         {HsGRPC.optNormalHandlers = [HsGRPC.UnaryHandler
-                                       (HsGRPC.MethodName "/chord.Chord/Join")
-                                       (HsGRPC.convertGeneratedServerHandler chordJoin),
+                                       (HsGRPC.MethodName "/chord.Chord/JoinV2")
+                                       (HsGRPC.convertGeneratedServerHandler chordJoinV2),
                                      HsGRPC.UnaryHandler
-                                       (HsGRPC.MethodName "/chord.Chord/Route")
-                                       (HsGRPC.convertGeneratedServerHandler chordRoute),
+                                       (HsGRPC.MethodName "/chord.Chord/JoinOk")
+                                       (HsGRPC.convertGeneratedServerHandler chordJoinOk),
                                      HsGRPC.UnaryHandler
                                        (HsGRPC.MethodName "/chord.Chord/NewNode")
                                        (HsGRPC.convertGeneratedServerHandler chordNewNode),
@@ -97,7 +102,13 @@ chordServer
                                        (HsGRPC.convertGeneratedServerHandler chordStore),
                                      HsGRPC.UnaryHandler
                                        (HsGRPC.MethodName "/chord.Chord/Retrieve")
-                                       (HsGRPC.convertGeneratedServerHandler chordRetrieve)],
+                                       (HsGRPC.convertGeneratedServerHandler chordRetrieve),
+                                     HsGRPC.UnaryHandler
+                                       (HsGRPC.MethodName "/chord.Chord/Join")
+                                       (HsGRPC.convertGeneratedServerHandler chordJoin),
+                                     HsGRPC.UnaryHandler
+                                       (HsGRPC.MethodName "/chord.Chord/Route")
+                                       (HsGRPC.convertGeneratedServerHandler chordRoute)],
          HsGRPC.optClientStreamHandlers = [HsGRPC.ClientStreamHandler
                                              (HsGRPC.MethodName "/chord.Chord/Transfer")
                                              (HsGRPC.convertGeneratedServerReaderHandler
@@ -120,12 +131,12 @@ chordClient client
         (Hs.pure (HsGRPC.clientRequest client)
            <*>
              HsGRPC.clientRegisterMethod
-               client (HsGRPC.MethodName "/chord.Chord/Join"))
+               client (HsGRPC.MethodName "/chord.Chord/JoinV2"))
       <*>
         (Hs.pure (HsGRPC.clientRequest client)
            <*>
              HsGRPC.clientRegisterMethod
-               client (HsGRPC.MethodName "/chord.Chord/Route"))
+               client (HsGRPC.MethodName "/chord.Chord/JoinOk"))
       <*>
         (Hs.pure (HsGRPC.clientRequest client)
            <*>
@@ -156,6 +167,84 @@ chordClient client
            <*>
              HsGRPC.clientRegisterMethod
                client (HsGRPC.MethodName "/chord.Chord/Transfer"))
+      <*>
+        (Hs.pure (HsGRPC.clientRequest client)
+           <*>
+             HsGRPC.clientRegisterMethod
+               client (HsGRPC.MethodName "/chord.Chord/Join"))
+      <*>
+        (Hs.pure (HsGRPC.clientRequest client)
+           <*>
+             HsGRPC.clientRegisterMethod
+               client (HsGRPC.MethodName "/chord.Chord/Route"))
+data JOINREQUESTED
+  = JOINREQUESTED {}
+  deriving (Hs.Show, Hs.Eq, Hs.Ord, Hs.Generic)
+instance (Hs.NFData JOINREQUESTED)
+instance (HsProtobuf.Named JOINREQUESTED) where
+  nameOf _ = Hs.fromString "JOINREQUESTED"
+instance (HsProtobuf.HasDefault JOINREQUESTED)
+instance (HsProtobuf.Message JOINREQUESTED) where
+  encodeMessage _ JOINREQUESTED {} = Hs.mempty
+  decodeMessage _ = Hs.pure JOINREQUESTED
+  dotProto _ = []
+instance (HsJSONPB.ToJSONPB JOINREQUESTED) where
+  toJSONPB JOINREQUESTED = HsJSONPB.object []
+  toEncodingPB JOINREQUESTED = HsJSONPB.pairs []
+instance (HsJSONPB.FromJSONPB JOINREQUESTED) where
+  parseJSONPB
+    = HsJSONPB.withObject
+        "JOINREQUESTED" (\ obj -> Hs.pure JOINREQUESTED)
+instance (HsJSONPB.ToJSON JOINREQUESTED) where
+  toJSON = HsJSONPB.toAesonValue
+  toEncoding = HsJSONPB.toAesonEncoding
+instance (HsJSONPB.FromJSON JOINREQUESTED) where
+  parseJSON = HsJSONPB.parseJSONPB
+instance (HsJSONPB.ToSchema JOINREQUESTED) where
+  declareNamedSchema _
+    = do Hs.return
+           HsJSONPB.NamedSchema
+             {HsJSONPB._namedSchemaName = Hs.Just "JOINREQUESTED",
+              HsJSONPB._namedSchemaSchema = Hs.mempty
+                                              {HsJSONPB._schemaParamSchema = Hs.mempty
+                                                                               {HsJSONPB._paramSchemaType = Hs.Just
+                                                                                                              HsJSONPB.SwaggerObject},
+                                               HsJSONPB._schemaProperties = HsJSONPB.insOrdFromList
+                                                                              []}}
+data JOINSUCCESSFUL
+  = JOINSUCCESSFUL {}
+  deriving (Hs.Show, Hs.Eq, Hs.Ord, Hs.Generic)
+instance (Hs.NFData JOINSUCCESSFUL)
+instance (HsProtobuf.Named JOINSUCCESSFUL) where
+  nameOf _ = Hs.fromString "JOINSUCCESSFUL"
+instance (HsProtobuf.HasDefault JOINSUCCESSFUL)
+instance (HsProtobuf.Message JOINSUCCESSFUL) where
+  encodeMessage _ JOINSUCCESSFUL {} = Hs.mempty
+  decodeMessage _ = Hs.pure JOINSUCCESSFUL
+  dotProto _ = []
+instance (HsJSONPB.ToJSONPB JOINSUCCESSFUL) where
+  toJSONPB JOINSUCCESSFUL = HsJSONPB.object []
+  toEncodingPB JOINSUCCESSFUL = HsJSONPB.pairs []
+instance (HsJSONPB.FromJSONPB JOINSUCCESSFUL) where
+  parseJSONPB
+    = HsJSONPB.withObject
+        "JOINSUCCESSFUL" (\ obj -> Hs.pure JOINSUCCESSFUL)
+instance (HsJSONPB.ToJSON JOINSUCCESSFUL) where
+  toJSON = HsJSONPB.toAesonValue
+  toEncoding = HsJSONPB.toAesonEncoding
+instance (HsJSONPB.FromJSON JOINSUCCESSFUL) where
+  parseJSON = HsJSONPB.parseJSONPB
+instance (HsJSONPB.ToSchema JOINSUCCESSFUL) where
+  declareNamedSchema _
+    = do Hs.return
+           HsJSONPB.NamedSchema
+             {HsJSONPB._namedSchemaName = Hs.Just "JOINSUCCESSFUL",
+              HsJSONPB._namedSchemaSchema = Hs.mempty
+                                              {HsJSONPB._schemaParamSchema = Hs.mempty
+                                                                               {HsJSONPB._paramSchemaType = Hs.Just
+                                                                                                              HsJSONPB.SwaggerObject},
+                                               HsJSONPB._schemaProperties = HsJSONPB.insOrdFromList
+                                                                              []}}
 data JOIN
   = JOIN {joinJoinedId :: Hs.Word64,
           joinJoinedIp :: Hs.Text,
