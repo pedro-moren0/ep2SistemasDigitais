@@ -2,7 +2,7 @@ module DHTTypes (module DHTTypes) where
 
 import Network.GRPC.LowLevel.Call
 
-data DHTNode = DHTNode Host Port
+data DHTNode = DHTNode { getHost :: Host, getPort :: Port}
 type PredecessorNode = DHTNode
 type SuccessorNode = DHTNode
 type Me = DHTNode

@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables #-}
+-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DataKinds #-}
@@ -78,13 +78,15 @@ tui portNumber = do
           -- Exibir o ID do predecessor, se existir
           maybePredecessor <- tryReadMVar predecessorNode
           case maybePredecessor of
-            Just predNode -> putStrLn $ "ID do predecessor: " ++ show (hashTestFromDHTNode predNode)
+            Just predNode@(DHTNode _ (Port port)) ->
+              putStrLn $ "ID do predecessor: " ++ show (hashTestFromDHTNode predNode) <> ", porta: " <> show port
             Nothing -> putStrLn "Predecessor não definido."
 
           -- Exibir o ID do sucessor, se existir
           maybeSuccessor <- tryReadMVar successorNode
           case maybeSuccessor of
-            Just succNode -> putStrLn $ "ID do sucessor: " ++ show (hashTestFromDHTNode succNode)
+            Just succNode@(DHTNode _ (Port port)) ->
+              putStrLn $ "ID do sucessor: " ++ show (hashTestFromDHTNode succNode) <> ", porta: " <> show port
             Nothing -> putStrLn "Sucessor não definido."
 
           loop predecessorNode successorNode currentNode
@@ -100,7 +102,7 @@ interactiveNodeConexion :: Me ->
 interactiveNodeConexion me mPred mSucc = do
   putStrLn
     "Digite o IP do nó a que se deseja conectar, ou x para iniciar uma nova rede: "
-  connectionOption <- getLine
+  connectionOption <- getLine -- IP que eu quero mandar mensagem
 
   case connectionOption of
     -- inicializa nova rede
@@ -111,12 +113,14 @@ interactiveNodeConexion me mPred mSucc = do
     -- tenta conexao com um no
     _ -> do
       putStrLn "Digite a porta da conexão: "
-      connectionPort <- getLine
+      connectionPort <- getLine -- porta do IP que eu quero me conectar
 
       case (readMaybe connectionPort :: Maybe Int) of
         Just portNumber -> do
-          -- TODO: tratar caso em que o IP nao eh um IP válido
-          response <- join (makeDHTNode (TL.pack connectionOption) (fromIntegral portNumber))
+          let
+            config = makeClientConfig (textToHost $ TL.pack connectionOption) (Port portNumber)
+
+          response <- join config me
           case response of
             ClientNormalResponse _ _ _ _ _ -> do
               putStrLn "Bem vindo à rede! :)"
@@ -138,8 +142,8 @@ getHost (DHTNode host _) = host
 getPort :: DHTNode -> Port
 getPort (DHTNode _ port) = port
 
-join :: DHTNode -> IO (ClientResult 'Normal JOINREQUESTED)
-join (DHTNode h@(Host host) p@(Port port)) = withGRPCClient clientConfig $ \client -> do
+join :: ClientConfig -> DHTNode -> IO (ClientResult 'Normal JOINREQUESTED)
+join config (DHTNode h@(Host host) p@(Port port)) = withGRPCClient config $ \client -> do
   let nodeId = hashTestFromDHTNode $ DHTNode h p
       requestMessage = JOIN
         { joinJoinedId = fromIntegral nodeId
@@ -147,6 +151,7 @@ join (DHTNode h@(Host host) p@(Port port)) = withGRPCClient clientConfig $ \clie
         , joinJoinedPort = fromIntegral port
         , joinJoinedIdTest = fromIntegral nodeId
         }
+  putStrLn $ "Calculei meu hash = " <> show nodeId
 
   Chord{ chordJoinV2 } <- chordClient client
   fullRes <- chordJoinV2 (ClientNormalRequest requestMessage 10 mempty)
@@ -158,15 +163,6 @@ join (DHTNode h@(Host host) p@(Port port)) = withGRPCClient clientConfig $ \clie
     (ClientErrorResponse err) -> do
       print err
   return fullRes
-  where
-    clientConfig =
-      ClientConfig
-        { clientServerEndpoint = endpoint (Host host) (Port port)
-        , clientArgs = []
-        , clientSSLConfig = Nothing
-        , clientAuthority = Nothing
-        }
-
 
 
 
@@ -203,4 +199,3 @@ leave mSucc = do
         , clientSSLConfig = Nothing
         , clientAuthority = Nothing
         }
-

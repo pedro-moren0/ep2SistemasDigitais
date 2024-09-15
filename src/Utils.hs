@@ -44,10 +44,10 @@ ccwDist a b = mod (a - b)
 -- someHash esta dentro do intervalo (predHash, myHash] mod n sse
 -- ao caminharmos em sentido anti-horario no anel, alcancamos myHash antes de
 -- chegar a predHash (i.e., se dCcw(myHash, someHash) < dCcw(myHash, predHash))
-type Hash = Int
+type CandidateHash = Int
 type MyHash = Int
 type PredHash = Int
-isRespTest :: Hash -> MyHash -> PredHash -> Int -> Bool
+isRespTest :: CandidateHash -> MyHash -> PredHash -> Int -> Bool
 isRespTest someHash predHash myHash n =
   ccwDist myHash someHash n < ccwDist myHash predHash n
 
@@ -62,3 +62,14 @@ makeClientConfig ip port = ClientConfig
   , clientSSLConfig = Nothing
   , clientAuthority = Nothing
   }
+
+isResponsible :: PredHash -> MyHash -> CandidateHash -> Bool
+isResponsible predHash myHash candidateHash =
+  if myHash > predHash then
+     candidateHash `elem` [predHashPlus1 .. myHash]
+  else
+    candidateHash `elem` ([predHashPlus1 .. maxHash] ++ [0 .. myHash])
+
+  where
+    predHashPlus1 = predHash + 1
+    maxHash = 7
