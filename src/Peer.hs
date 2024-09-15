@@ -1,4 +1,4 @@
--# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DataKinds #-}
@@ -23,7 +23,7 @@ import Control.Exception
 import Data.Hashable (hash)
 import Text.Read (readMaybe)
 import Utils
-import Prelude hiding (catch)
+import Prelude hiding (pred, succ, catch)
 import Control.Exception.Base
 
 
@@ -68,8 +68,7 @@ tui portNumber = do
           interactiveNodeConexion currentNode predecessorNode successorNode
           loop predecessorNode successorNode currentNode
         "2" -> do
-          leave successorNode
-          loop predecessorNode successorNode currentNode
+          leave predecessorNode successorNode
         "3" -> do
           let nodeId = hashTestFromDHTNode currentNode
           putStrLn $ "Meu ID é: " ++ show nodeId
@@ -136,12 +135,6 @@ interactiveNodeConexion me mPred mSucc = do
 calculateNodeId :: Host -> Port -> Int
 calculateNodeId (Host ip) (Port port) = (abs (hash (BSC8.unpack ip, port)) `mod` 20) + 1
 
-getHost :: DHTNode -> Host
-getHost (DHTNode host _) = host
-
-getPort :: DHTNode -> Port
-getPort (DHTNode _ port) = port
-
 join :: ClientConfig -> DHTNode -> IO (ClientResult 'Normal JOINREQUESTED)
 join config (DHTNode h@(Host host) p@(Port port)) = withGRPCClient config $ \client -> do
   let nodeId = hashTestFromDHTNode $ DHTNode h p
@@ -166,36 +159,58 @@ join config (DHTNode h@(Host host) p@(Port port)) = withGRPCClient config $ \cli
 
 
 
-leave :: MVar SuccessorNode -> IO ()
-leave mSucc = do
-  -- Obtém o successor atual
-  DHTNode (Host hostBS) (Port port) <- readMVar mSucc
+leave :: MVar PredecessorNode -> MVar SuccessorNode -> IO ()
+leave mPred mSucc = do
+  -- pega o antecessor e o sucessor e tranca a variavel
+  pred <- takeMVar mPred
+  succ <- takeMVar mSucc
 
-  -- Converte o IP para Text e cria a mensagem LEAVE
-  let succIp = TL.fromStrict $ decodeUtf8 hostBS
-  let requestMessage = LEAVE
-        { leavePredId = 0  -- Substitua com um ID adequado
-        , leavePredIp = succIp
-        , leavePredPort = fromIntegral port
-        , leavePredIdTest = 0  -- Substitua com um ID adequado
-        }
+  let
+    predConfig = makeClientConfig (getHost pred) (getPort pred)
+    succConfig = makeClientConfig (getHost succ) (getPort succ)
+    leaveMsg = LEAVE
+      { leavePredPort=fromIntegral $ unPort $ getPort pred
+      , leavePredIp=byteStringToLText $ unHost $ getHost pred
+      , leavePredIdTest=fromIntegral $ hashTestFromDHTNode pred
+      , leavePredId=fromIntegral $ hashTestFromDHTNode pred
+      }
+    nodeGoneMsg = NODEGONE
+      { nodegoneSuccPort=fromIntegral $ unPort $ getPort succ
+      , nodegoneSuccIp=byteStringToLText $ unHost $ getHost succ
+      , nodegoneSuccIdTest=fromIntegral $ hashTestFromDHTNode succ
+      , nodegoneSuccId=fromIntegral $ hashTestFromDHTNode succ
+      }
 
-  -- Cria o cliente gRPC e envia a solicitação
-  result <- try $ withGRPCClient (clientConfig hostBS port) $ \client -> do
-    Chord { chordLeave } <- chordClient client
-    chordLeave (ClientNormalRequest requestMessage 10 mempty)
+  sendLeave succConfig leaveMsg
 
-  -- Processa a resposta
-  case result of
-    Left err -> putStrLn $ "Erro ao enviar request LEAVE: " ++ show (err :: SomeException)
-    Right (ClientNormalResponse _res _meta1 _meta2 _status _details) -> putStrLn "Leave request sent successfully."
-    Right (ClientErrorResponse err) -> putStrLn $ "Erro na resposta LEAVE: " ++ show err
+  sendNodeGone predConfig nodeGoneMsg
+
+  putMVar mPred pred
+  putMVar mSucc succ
   where
-    -- Configuração do cliente gRPC
-    clientConfig host port =
-      ClientConfig
-        { clientServerEndpoint = endpoint (Host host) (Port $ fromIntegral port)
-        , clientArgs = []
-        , clientSSLConfig = Nothing
-        , clientAuthority = Nothing
-        }
+
+    sendLeave :: ClientConfig -> LEAVE -> IO ()
+    sendLeave config req = withGRPCClient config $ \client -> do
+      putStrLn "Sending LEAVE to successor"
+      Chord{ chordLeave } <- chordClient client
+      fullRes <- chordLeave (ClientNormalRequest req 10 mempty)
+
+      case fullRes of
+        (ClientNormalResponse LEAVEOK _meta1 _meta2 _status _details) -> do
+          putStrLn "Left successor node succesfully"
+
+        (ClientErrorResponse err) -> do
+          print err
+
+    sendNodeGone :: ClientConfig -> NODEGONE -> IO ()
+    sendNodeGone config req = withGRPCClient config $ \client -> do
+      putStrLn "Sending NODEGONE to predecessor"
+      Chord{ chordNodeGone } <- chordClient client
+      fullRes <- chordNodeGone (ClientNormalRequest req 10 mempty)
+
+      case fullRes of
+        (ClientNormalResponse NODEGONEOK _meta1 _meta2 _status _details) -> do
+          putStrLn "Left predecessor node succesfully"
+
+        (ClientErrorResponse err) -> do
+          print err

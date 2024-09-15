@@ -211,98 +211,10 @@ joinOkHandler
     return $ ServerNormalResponse JOINSUCCESSFUL [] StatusOk ""
 
 -- | DEPRECATED
--- joinHandler: função que trata a requisição de JOIN
 joinHandler = undefined
--- joinHandler :: MVar PredecessorNode ->
---   MVar SuccessorNode ->
---   ServerRequest 'Normal JOIN JOINOK ->
---   IO (ServerResponse 'Normal JOINOK)
--- joinHandler
---   mPred
---   mSucc
---   (ServerNormalRequest _metadata (JOIN _ joinIp joinPort _)) = do
 
---   let newNode = DHTNode (textToHost joinIp) (toPort joinPort)
---       nodeId = calculateNodeId (textToHost joinIp) (toPort joinPort)
-
---   putStrLn $ "Novo nó tentando se juntar: " ++ show newNode
-
---   currentSucc <- tryReadMVar mSucc
---   currentPred <- tryReadMVar mPred
-
---   case (currentSucc, currentPred) of
---     (Nothing, Nothing) -> do
---       -- Primeiro nó na rede, ele mesmo é seu sucessor e predecessor
---       putMVar mSucc newNode
---       putMVar mPred newNode
---       putStrLn "Novo nó é o único nó no anel, sucessor e predecessor apontam para ele mesmo."
-
---       let response = JOINOK
---             { joinokJoinedId = fromIntegral nodeId
---             , joinokPredIp = joinIp
---             , joinokPredPort = fromIntegral joinPort
---             , joinokSuccIp = joinIp
---             , joinokSuccPort = fromIntegral joinPort
---             , joinokJoinedIdTest = fromIntegral nodeId
---             }
---       return $ ServerNormalResponse response [] StatusOk "join com sucesso"
-
---     (Just succNode, Just predNode) -> do
---       -- Ajustar o predecessor e sucessor para incluir o novo nó
---       putMVar mSucc newNode
---       notifyNewNode predNode newNode
-
---       let response = JOINOK
---             { joinokJoinedId = fromIntegral nodeId
---             , joinokPredIp = hostToText $ getHost predNode
---             , joinokPredPort = portToInt $ getPort predNode
---             , joinokSuccIp = hostToText $ getHost succNode
---             , joinokSuccPort = portToInt $ getPort succNode
---             , joinokJoinedIdTest = fromIntegral nodeId
---             }
-
---       return $ ServerNormalResponse response [] StatusOk "join com sucesso"
-
---   where
---     notifyNewNode :: DHTNode -> DHTNode -> IO ()
---     notifyNewNode predNode newNode = do
---       let newNodeIp = hostToText $ getHost newNode
---           newNodePort = portToInt $ getHost newNode
---       sendNewNodeNotification predNode newNodeIp newNodePort
-
--- sendNewNodeNotification :: DHTNode -> Text -> GHC.Word.Word32 -> IO ()
--- sendNewNodeNotification = sendNewNodeNotification
-
--- portToInt :: a2 -> GHC.Word.Word32
--- portToInt = portToInt
-
--- hostToText :: a5 -> Text
--- hostToText = hostToText
-
-
-
-
-routeHandler :: Me ->
-  MVar PredecessorNode ->
-  MVar SuccessorNode ->
-  ServerRequest 'Normal ROUTE ROUTEOK ->
-  IO (ServerResponse 'Normal ROUTEOK)
-routeHandler
-  me
-  mPred
-  mSucc
-  (ServerNormalRequest _metadata (ROUTE requestData)) = do
-  -- Lógica para encaminhar a solicitação para o nó apropriado
-  -- Esta é uma parte crítica e pode depender de como você implementa o roteamento
-  -- Pode envolver comunicação com o sucessor ou predecessor, dependendo da solicitação
-
-  -- Exemplo básico (necessita ser adaptado conforme o protocolo Chord implementado)
-  putStrLn "Routing request..."
-
-  -- Retornar uma resposta de sucesso
-  let response = ROUTEOK -- Assumindo que ROUTEOK é o tipo de resposta esperado
-  return $ ServerNormalResponse response [] StatusOk ""
-
+-- | DEPRECATED
+routeHandler = undefined
 
 
 newNodeHandler :: MVar SuccessorNode ->
@@ -329,19 +241,15 @@ leaveHandler ::
   IO (ServerResponse 'Normal LEAVEOK)
 leaveHandler mPred (ServerNormalRequest _metadata (LEAVE _ predIp predPort _)) = do
   -- Obtém o predecessor atual
-  currentPred <- takeMVar mPred
+  _ <- takeMVar mPred
 
-  -- Converte o IP de Text para ByteString
-  let predIpBS = encodeUtf8 $ TL.toStrict predIp
+  let newNode = makeDHTNode predIp predPort
 
   -- Atualiza o predecessor com os valores recebidos na requisição de LEAVE
-  putMVar mPred (DHTNode (Host predIpBS) (Port $ fromIntegral predPort))
-
-  -- Cria a resposta LEAVEOK para enviar de volta
-  let response = LEAVEOK
+  putMVar mPred newNode
 
   -- Envia a resposta LEAVEOK
-  return $ ServerNormalResponse response [] StatusOk ""
+  return $ ServerNormalResponse LEAVEOK [] StatusOk ""
 
 
 
@@ -351,19 +259,15 @@ nodeGoneHandler ::
   IO (ServerResponse 'Normal NODEGONEOK)
 nodeGoneHandler mSucc (ServerNormalRequest _metadata (NODEGONE _ succIp succPort _)) = do
   -- Obtém o sucessor atual
-  currentSucc <- takeMVar mSucc
+  _ <- takeMVar mSucc
 
-  -- Converte o IP de Text para ByteString
-  let succIpBS = encodeUtf8 $ TL.toStrict succIp
+  let newNode = makeDHTNode succIp succPort
 
   -- Atualiza o sucessor com os valores recebidos na requisição de NODEGONE
-  putMVar mSucc (DHTNode (Host succIpBS) (Port $ fromIntegral succPort))
-
-  -- Cria a resposta NODEGONEOK para enviar de volta
-  let response = NODEGONEOK -- Se NODEGONEOK não possui campos adicionais, pode ser usado diretamente.
+  putMVar mSucc newNode
 
   -- Envia a resposta NODEGONEOK
-  return $ ServerNormalResponse response [] StatusOk ""
+  return $ ServerNormalResponse NODEGONEOK [] StatusOk ""
 
 
 
