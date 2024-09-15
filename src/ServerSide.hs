@@ -4,6 +4,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE NamedFieldPuns #-}
 
 module ServerSide (runServer) where
 
@@ -21,6 +22,8 @@ import Data.ByteString
 
 import Data.Hashable (hash)
 import qualified GHC.Word
+import Prelude hiding (succ, pred)
+import Network.GRPC.LowLevel.Call (endpoint)
 
 
 
@@ -28,11 +31,11 @@ import qualified GHC.Word
 
 
 runServer :: Host -> Port -> MVar PredecessorNode -> MVar SuccessorNode -> IO ()
-runServer host port mPred mSucc = chordServer
-  (handlers (DHTNode host port) mPred mSucc)
+runServer myHost myPort mPred mSucc = chordServer
+  (handlers (DHTNode myHost myPort) mPred mSucc)
   defaultServiceOptions
-    { serverHost = host
-    , serverPort = port
+    { serverHost = myHost
+    , serverPort = myPort
     }
 
 
@@ -43,6 +46,8 @@ handlers :: Me ->
   Chord ServerRequest ServerResponse
 handlers me mPred mSucc = Chord
   { chordJoin = joinHandler mPred mSucc
+  , chordJoinV2 = joinV2Handler me mPred mSucc
+  , chordJoinOk = joinOkHandler
   , chordRoute = routeHandler me mPred mSucc
   , chordNewNode = newNodeHandler
   , chordLeave = leaveHandler mPred
@@ -55,6 +60,127 @@ handlers me mPred mSucc = Chord
 calculateNodeId :: Host -> Port -> Int
 calculateNodeId (Host ip) (Port port) = hash (ip, port)
 
+joinV2Handler :: Me ->
+  MVar PredecessorNode ->
+  MVar SuccessorNode ->
+  ServerRequest 'Normal JOIN JOINREQUESTED ->
+  IO (ServerResponse 'Normal JOINREQUESTED)
+joinV2Handler
+  me@(DHTNode myHost myPort)
+  mPred
+  mSucc
+  (ServerNormalRequest _meta joinMsg@(JOIN joinId joinIp joinPort joinIdTest)) = do
+    putStrLn $ joinV2LogMsg joinIp joinPort -- log
+
+    -- acessa o predecessor deste no e faz o lock nessa variavel
+    pred@(DHTNode predHost predPort) <- takeMVar mPred
+
+    -- calcula o hash deste no e do predecessor deste no
+    -- ATENCAO: estamos usando o hash de teste, que e so um Int comum e varia
+    -- de 0 a 7. depois temos que trocar para o hash de verdade
+    let
+      newNode@(DHTNode newNodeHost newNodePort) = makeDHTNode joinIp joinPort
+      myHash = hashTestFromDHTNode me
+      predHash = hashTestFromDHTNode pred
+
+    -- se o id do novo nó é responsabilidade deste nó
+    _ <- if isRespTest (fromIntegral joinIdTest) myHash predHash 8
+      then do
+        -- gera as mensagens que vamos usar nas requisicoes
+        let
+          newNodeMsg = NEWNODE
+            { newnodeSuccPort=joinPort
+            , newnodeSuccIp=joinIp
+            }
+
+          joinOkMsg = JOINOK
+            { joinokSuccPort=fromIntegral $ unPort myPort
+            , joinokSuccIp=byteStringToLText $ unHost myHost
+            , joinokPredPort=fromIntegral $ unPort predPort
+            , joinokPredIp=byteStringToLText $ unHost predHost
+            , joinokJoinedIdTest=joinIdTest
+            , joinokJoinedId=joinId
+            }
+
+        -- manda mensagem para o predecessor deste nó para apontar para o novo
+        -- nó que entrou na rede
+        _ <- forkIO $ sendNewNode (makeClientConfig newNodeHost newNodePort) newNodeMsg
+
+        -- manda mensagem para o novo nó avisando que ele entrou na rede
+        _ <- forkIO $ sendJoinOk (makeClientConfig newNodeHost newNodePort) joinOkMsg
+
+        -- atualiza o predecessor desse nó
+        putMVar mPred newNode
+
+      -- se o id do novo nó não é responsabilidade deste nó
+      else do
+        -- destrava a variavel do predecessor. nao precisamos dela nesse caso
+        putMVar mPred pred
+
+        -- acessa o sucessor deste no e faz o lock na variavel
+        succ@(DHTNode succHost succPort) <- takeMVar mSucc
+
+        -- reenvia o pedido de join para o sucessor deste nó
+        _ <- forkIO $ sendJoin (makeClientConfig succHost succPort) joinMsg
+
+        -- destrava a variavel do sucessor
+        putMVar mSucc succ
+
+    -- responde o nó que enviou o JOIN para este nó
+    return $ ServerNormalResponse JOINREQUESTED [] StatusOk ""
+
+      where
+        -- constroi mensagem de log para esse handler
+        joinV2LogMsg = makeLogMessage "JOINV2" "Request RECEIVED to join network"
+
+        -- funcoes de envio de mensagem
+        -- eu forneco o endereco de quem vai receber a mensagem via ClientConfig
+        -- e a mensagem que eu quero enviar como segundo argumento
+        -- a funcao faz o envio e imprime a resposta
+
+        -- as tres funcoes fazem o mesma coisa. com certeza da pra refatorar
+        sendJoin :: ClientConfig -> JOIN -> IO ()
+        sendJoin config req = withGRPCClient config $ \client -> do
+          putStrLn "Forwarded Join request to successor"
+          Chord{ chordJoinV2 } <- chordClient client
+          fullRes <- chordJoinV2 (ClientNormalRequest req 10 mempty)
+          
+          case fullRes of
+            (ClientNormalResponse JOINREQUESTED _meta1 _meta2 _status _details) -> do
+              putStrLn "Join request handled successfully"
+
+            (ClientErrorResponse err) -> do
+              print err
+
+        sendJoinOk :: ClientConfig -> JOINOK -> IO ()
+        sendJoinOk config req = withGRPCClient config $ \client -> do
+          putStrLn "Sent welcome request to new node"
+          Chord{ chordJoinOk } <- chordClient client
+          fullRes <- chordJoinOk (ClientNormalRequest req 10 mempty)
+          
+          case fullRes of
+            (ClientNormalResponse JOINSUCCESSFUL _meta1 _meta2 _status _details) -> do
+              putStrLn "JoinOk request handled successfully"
+
+            (ClientErrorResponse err) -> do
+              print err
+
+        sendNewNode :: ClientConfig -> NEWNODE -> IO ()
+        sendNewNode config req = withGRPCClient config $ \client -> do
+          putStrLn "Sent successor update message to my predecessor"
+          Chord{ chordNewNode } <- chordClient client
+          fullRes <- chordNewNode (ClientNormalRequest req 10 mempty)
+          
+          case fullRes of
+            (ClientNormalResponse NEWNODEOK _meta1 _meta2 _status _details) -> do
+              putStrLn "NewNode request handled successfully"
+
+            (ClientErrorResponse err) -> do
+              print err
+
+joinOkHandler = undefined
+
+-- | DEPRECATED
 -- joinHandler: função que trata a requisição de JOIN
 joinHandler :: MVar PredecessorNode ->
   MVar SuccessorNode ->

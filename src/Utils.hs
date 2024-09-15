@@ -9,6 +9,7 @@ import qualified Data.Text as T
 import Data.Text.Encoding (encodeUtf8, decodeUtf8)
 import Data.Char (ord)
 import qualified Data.ByteString as BS
+import Network.GRPC.LowLevel.Call (endpoint)
 
 toPort :: Integral a => a -> Port
 toPort = Port . fromIntegral
@@ -43,6 +44,21 @@ ccwDist a b = mod (a - b)
 -- someHash esta dentro do intervalo (predHash, myHash] mod n sse
 -- ao caminharmos em sentido anti-horario no anel, alcancamos myHash antes de
 -- chegar a predHash (i.e., se dCcw(myHash, someHash) < dCcw(myHash, predHash))
-isRespTest :: Int -> Int -> Int -> Int -> Bool
+type Hash = Int
+type MyHash = Int
+type PredHash = Int
+isRespTest :: Hash -> MyHash -> PredHash -> Int -> Bool
 isRespTest someHash predHash myHash n =
   ccwDist myHash someHash n < ccwDist myHash predHash n
+
+makeLogMessage :: String -> String -> TL.Text -> Word32 -> String
+makeLogMessage handlerName logMsg ip port =
+  "[" <> handlerName <> "] --- " <> logMsg <> " from " <> show ip <> ":" <> show port
+
+makeClientConfig :: Host -> Port -> ClientConfig
+makeClientConfig ip port = ClientConfig
+  { clientServerEndpoint = endpoint ip port
+  , clientArgs = []
+  , clientSSLConfig = Nothing
+  , clientAuthority = Nothing
+  }
