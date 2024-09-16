@@ -26,6 +26,7 @@ source-repository head
 library
   exposed-modules:
       Chord
+      Constants
       DHTTypes
       Lib
       Peer
@@ -44,6 +45,7 @@ library
     , bytestring
     , containers
     , deepseq
+    , directory
     , grpc-haskell
     , grpc-haskell-core
     , hashable
@@ -68,6 +70,7 @@ executable ep2-exe
     , bytestring
     , containers
     , deepseq
+    , directory
     , ep2
     , grpc-haskell
     , grpc-haskell-core
@@ -95,6 +98,7 @@ test-suite ep2-test
     , bytestring
     , containers
     , deepseq
+    , directory
     , ep2
     , grpc-haskell
     , grpc-haskell-core

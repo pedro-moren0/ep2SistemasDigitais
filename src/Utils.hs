@@ -5,7 +5,6 @@ import DHTTypes
 import Network.GRPC.HighLevel.Generated
 import Data.Word (Word32)
 import qualified Data.Text.Lazy as TL
-import qualified Data.Text as T
 import Data.Text.Encoding (encodeUtf8, decodeUtf8)
 import Data.Char (ord)
 import qualified Data.ByteString as BS

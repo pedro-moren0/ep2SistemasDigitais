@@ -32,6 +32,7 @@ dependencies:
 - text
 - aeson
 - hashable
+- directory
 
 ghc-options:
 - -Wall

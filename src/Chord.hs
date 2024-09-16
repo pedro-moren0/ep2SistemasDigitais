@@ -59,8 +59,8 @@ data Chord request response
                           -> (Hs.IO (response 'HsGRPC.Normal Chord.LEAVEOK))),
            chordNodeGone :: ((request 'HsGRPC.Normal Chord.NODEGONE Chord.NODEGONEOK)
                              -> (Hs.IO (response 'HsGRPC.Normal Chord.NODEGONEOK))),
-           chordStore :: ((request 'HsGRPC.Normal Chord.STORE Chord.STOREOK)
-                          -> (Hs.IO (response 'HsGRPC.Normal Chord.STOREOK))),
+           chordStore :: ((request 'HsGRPC.Normal Chord.STORE Chord.STOREREQUESTED)
+                          -> (Hs.IO (response 'HsGRPC.Normal Chord.STOREREQUESTED))),
            chordRetrieve :: ((request 'HsGRPC.Normal Chord.RETRIEVE Chord.RETRIEVERESPONSE)
                              -> (Hs.IO (response 'HsGRPC.Normal Chord.RETRIEVERESPONSE))),
            chordTransfer :: ((request 'HsGRPC.ClientStreaming Chord.TRANSFER Chord.TRANSFEROK)
@@ -1127,33 +1127,34 @@ instance (HsJSONPB.ToSchema STORE) where
                                                                                 storeValue),
                                                                                ("keyTest", 
                                                                                 storeKeyTest)]}}
-data STOREOK
-  = STOREOK {}
+data STOREREQUESTED
+  = STOREREQUESTED {}
   deriving (Hs.Show, Hs.Eq, Hs.Ord, Hs.Generic)
-instance (Hs.NFData STOREOK)
-instance (HsProtobuf.Named STOREOK) where
-  nameOf _ = Hs.fromString "STOREOK"
-instance (HsProtobuf.HasDefault STOREOK)
-instance (HsProtobuf.Message STOREOK) where
-  encodeMessage _ STOREOK {} = Hs.mempty
-  decodeMessage _ = Hs.pure STOREOK
+instance (Hs.NFData STOREREQUESTED)
+instance (HsProtobuf.Named STOREREQUESTED) where
+  nameOf _ = Hs.fromString "STOREREQUESTED"
+instance (HsProtobuf.HasDefault STOREREQUESTED)
+instance (HsProtobuf.Message STOREREQUESTED) where
+  encodeMessage _ STOREREQUESTED {} = Hs.mempty
+  decodeMessage _ = Hs.pure STOREREQUESTED
   dotProto _ = []
-instance (HsJSONPB.ToJSONPB STOREOK) where
-  toJSONPB STOREOK = HsJSONPB.object []
-  toEncodingPB STOREOK = HsJSONPB.pairs []
-instance (HsJSONPB.FromJSONPB STOREOK) where
+instance (HsJSONPB.ToJSONPB STOREREQUESTED) where
+  toJSONPB STOREREQUESTED = HsJSONPB.object []
+  toEncodingPB STOREREQUESTED = HsJSONPB.pairs []
+instance (HsJSONPB.FromJSONPB STOREREQUESTED) where
   parseJSONPB
-    = HsJSONPB.withObject "STOREOK" (\ obj -> Hs.pure STOREOK)
-instance (HsJSONPB.ToJSON STOREOK) where
+    = HsJSONPB.withObject
+        "STOREREQUESTED" (\ obj -> Hs.pure STOREREQUESTED)
+instance (HsJSONPB.ToJSON STOREREQUESTED) where
   toJSON = HsJSONPB.toAesonValue
   toEncoding = HsJSONPB.toAesonEncoding
-instance (HsJSONPB.FromJSON STOREOK) where
+instance (HsJSONPB.FromJSON STOREREQUESTED) where
   parseJSON = HsJSONPB.parseJSONPB
-instance (HsJSONPB.ToSchema STOREOK) where
+instance (HsJSONPB.ToSchema STOREREQUESTED) where
   declareNamedSchema _
     = do Hs.return
            HsJSONPB.NamedSchema
-             {HsJSONPB._namedSchemaName = Hs.Just "STOREOK",
+             {HsJSONPB._namedSchemaName = Hs.Just "STOREREQUESTED",
               HsJSONPB._namedSchemaSchema = Hs.mempty
                                               {HsJSONPB._schemaParamSchema = Hs.mempty
                                                                                {HsJSONPB._paramSchemaType = Hs.Just

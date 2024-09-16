@@ -8,7 +8,7 @@ service Chord {
   rpc NewNode (NEW_NODE) returns (NEW_NODE_OK) {}
   rpc Leave (LEAVE) returns (LEAVE_OK) {}
   rpc NodeGone (NODE_GONE) returns (NODE_GONE_OK) {}
-  rpc Store (STORE) returns (STORE_OK) {}
+  rpc Store (STORE) returns (STORE_REQUESTED) {}
   rpc Retrieve (RETRIEVE) returns (RETRIEVE_RESPONSE) {}
   rpc Transfer (stream TRANSFER) returns (TRANSFER_OK) {}
 
@@ -68,7 +68,7 @@ message STORE {
   int32 keyTest = 2000;
 }
 
-message STORE_OK { }
+message STORE_REQUESTED { }
 
 message RETRIEVE {
   fixed64 key = 6;

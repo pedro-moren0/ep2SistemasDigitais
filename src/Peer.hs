@@ -25,6 +25,8 @@ import Text.Read (readMaybe)
 import Utils
 import Prelude hiding (pred, succ, catch)
 import Control.Exception.Base
+import Constants
+import System.Directory
 
 
 
@@ -68,7 +70,7 @@ tui portNumber = do
           interactiveNodeConexion currentNode predecessorNode successorNode
           loop predecessorNode successorNode currentNode
         "2" -> do
-          leave predecessorNode successorNode
+          leave currentNode predecessorNode successorNode
         "3" -> do
           let nodeId = hashTestFromDHTNode currentNode
           putStrLn $ "Meu ID é: " ++ show nodeId
@@ -108,6 +110,9 @@ interactiveNodeConexion me mPred mSucc = do
     "x" -> do
       putMVar mPred me
       putMVar mSucc me
+
+      -- inicializa a pasta na qual os arquivos serao guardados
+      createDirectory $ nodeDir <> "/" <> show (hashTestFromDHTNode me)
 
     -- tenta conexao com um no
     _ -> do
@@ -159,8 +164,8 @@ join config (DHTNode h@(Host host) p@(Port port)) = withGRPCClient config $ \cli
 
 
 
-leave :: MVar PredecessorNode -> MVar SuccessorNode -> IO ()
-leave mPred mSucc = do
+leave :: Me -> MVar PredecessorNode -> MVar SuccessorNode -> IO ()
+leave me mPred mSucc = do
   -- pega o antecessor e o sucessor e tranca a variavel
   pred <- takeMVar mPred
   succ <- takeMVar mSucc
@@ -181,12 +186,18 @@ leave mPred mSucc = do
       , nodegoneSuccId=fromIntegral $ hashTestFromDHTNode succ
       }
 
+  putMVar mPred pred -- fazer isso nessa ordem pode dar problema?
+  putMVar mSucc succ
+
   sendLeave succConfig leaveMsg
 
   sendNodeGone predConfig nodeGoneMsg
 
-  putMVar mPred pred
-  putMVar mSucc succ
+  -- TRANSFER
+
+  -- apos mensagem de sucesso de transfer, apagar toda a pasta e arquivos
+  removeDirectoryRecursive $ nodeDir <> "/" <> show (hashTestFromDHTNode me)
+
   where
 
     sendLeave :: ClientConfig -> LEAVE -> IO ()

@@ -24,8 +24,8 @@ import Data.Hashable (hash)
 import qualified GHC.Word
 import Prelude hiding (succ, pred)
 import Network.GRPC.LowLevel.Call (endpoint)
-
-
+import System.Directory
+import Constants
 
 
 
@@ -56,9 +56,6 @@ handlers me mPred mSucc = Chord
   , chordRetrieve = retrieveHandler
   , chordTransfer = transferHandler
   }
-
-calculateNodeId :: Host -> Port -> Int
-calculateNodeId (Host ip) (Port port) = hash (ip, port)
 
 joinV2Handler :: Me ->
   MVar PredecessorNode ->
@@ -193,7 +190,7 @@ joinOkHandler :: MVar PredecessorNode ->
 joinOkHandler
   mPred
   mSucc
-  (ServerNormalRequest _meta (JOINOK _ joinPredIp joinPredPort joinSuccIp joinSuccPort _)) = do
+  (ServerNormalRequest _meta (JOINOK _ joinPredIp joinPredPort joinSuccIp joinSuccPort joinIdTest)) = do
     putStrLn "[JOINOK] --- Accepted in the network. Updating my neighbors."
 
     -- Converte o IP e a porta do novo nó para o formato apropriado
@@ -205,8 +202,9 @@ joinOkHandler
     _ <- putMVar mPred newPred
     _ <- putMVar mSucc newSucc
 
-    putStrLn $ "JoinOk pred: " <> show newPred
-    putStrLn $ "JoinOk succ: " <> show newSucc
+    createDirectory $ nodeDir <> "/" <> show joinIdTest
+    -- putStrLn $ "JoinOk pred: " <> show newPred
+    -- putStrLn $ "JoinOk succ: " <> show newSucc
 
     return $ ServerNormalResponse JOINSUCCESSFUL [] StatusOk ""
 
@@ -272,7 +270,7 @@ nodeGoneHandler mSucc (ServerNormalRequest _metadata (NODEGONE _ succIp succPort
 
 
 -- Definições dos handlers não implementados:
-storeHandler :: ServerRequest 'Normal STORE STOREOK -> IO (ServerResponse 'Normal STOREOK)
+storeHandler :: ServerRequest 'Normal STORE STOREREQUESTED -> IO (ServerResponse 'Normal STOREREQUESTED)
 storeHandler _ = do
   -- Implementar o comportamento desejado ou lançar uma exceção
   error "storeHandler não implementado"
