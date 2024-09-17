@@ -14,6 +14,7 @@ import Network.GRPC.HighLevel
 import Network.GRPC.HighLevel.Generated
 import Network.GRPC.LowLevel.Call
 import Data.Text.Encoding
+import qualified Data.ByteString as BS
 import Data.ByteString.Char8 as BSC8 hiding (getLine, putStrLn)
 import Data.Text.Lazy as TL
 import Control.Concurrent.MVar
@@ -40,6 +41,7 @@ menuOptionList =
   \4 - CHECK NEIGHBORHOOD NODES'S IDS \n\
   \5 - STORE\n\
   \6 - RETRIEVE\n\
+  \d - CHECK FILE HASH\n\
   \x - QUIT\n\
   \=============================\n\
   \"
@@ -80,18 +82,38 @@ tui portNumber = do
           maybePredecessor <- tryReadMVar predecessorNode
           case maybePredecessor of
             Just predNode@(DHTNode _ (Port port)) ->
-              putStrLn $ "ID do predecessor: " ++ show (hashTestFromDHTNode predNode) <> ", porta: " <> show port
+              putStrLn
+                $ "ID do predecessor: "
+                <> show (hashTestFromDHTNode predNode)
+                <> ", porta: "
+                <> show port
             Nothing -> putStrLn "Predecessor não definido."
 
           -- Exibir o ID do sucessor, se existir
           maybeSuccessor <- tryReadMVar successorNode
           case maybeSuccessor of
             Just succNode@(DHTNode _ (Port port)) ->
-              putStrLn $ "ID do sucessor: " ++ show (hashTestFromDHTNode succNode) <> ", porta: " <> show port
+              putStrLn
+                $ "ID do sucessor: "
+                <> show (hashTestFromDHTNode succNode)
+                <> ", porta: "
+                <> show port
             Nothing -> putStrLn "Sucessor não definido."
 
           loop predecessorNode successorNode currentNode
+        "5" -> do
+          putStrLn "Digite o nome do arquivo (com extensão):"
+          fileName <- getLine
+          putStrLn "Digite o caminho para o nome do arquivo (com '/' no final):"
+          filePath <- getLine
+          store successorNode fileName filePath
+          loop predecessorNode successorNode currentNode
         "x" -> return ()
+        "d" -> do
+          putStrLn "Digite o nome do arquivo (com extensão):"
+          fileName <- getLine
+          print (hashTestFile fileName)
+          loop predecessorNode successorNode currentNode
         _ -> do
           putStrLn "Opção inválida"
           loop predecessorNode successorNode currentNode
@@ -112,7 +134,7 @@ interactiveNodeConexion me mPred mSucc = do
       putMVar mSucc me
 
       -- inicializa a pasta na qual os arquivos serao guardados
-      createDirectory $ nodeDir <> "/" <> show (hashTestFromDHTNode me)
+      createDirectoryIfMissing False $ nodeDir <> "/" <> show (hashTestFromDHTNode me)
 
     -- tenta conexao com um no
     _ -> do
@@ -137,8 +159,6 @@ interactiveNodeConexion me mPred mSucc = do
           interactiveNodeConexion me mPred mSucc
 
 
-calculateNodeId :: Host -> Port -> Int
-calculateNodeId (Host ip) (Port port) = (abs (hash (BSC8.unpack ip, port)) `mod` 20) + 1
 
 join :: ClientConfig -> DHTNode -> IO (ClientResult 'Normal JOINREQUESTED)
 join config (DHTNode h@(Host host) p@(Port port)) = withGRPCClient config $ \client -> do
@@ -225,3 +245,46 @@ leave me mPred mSucc = do
 
         (ClientErrorResponse err) -> do
           print err
+
+store :: MVar SuccessorNode -> FileName -> FilePath -> IO ()
+store mSucc fileName filePath = do
+  succ <- takeMVar mSucc
+  fileContent <- BS.readFile $ filePath <> fileName
+
+  let
+    key = hashTestFile fileName
+    config = makeClientConfig (getHost succ) (getPort succ)
+    reqMsg = STORE
+      { storeValue=fileContent
+      , storeSize=fromIntegral $ BS.length fileContent
+      , storeKeyTest=fromIntegral key
+      , storeKey=fromIntegral key
+      }
+  putMVar mSucc succ
+  sendStore config reqMsg
+  where
+    sendStore :: ClientConfig -> STORE -> IO ()
+    sendStore config req = withGRPCClient config $ \client -> do
+      putStrLn "Sending STORE to successor"
+      Chord{ chordStore } <- chordClient client
+      fullRes <- chordStore (ClientNormalRequest req 10 mempty)
+
+      case fullRes of
+        (ClientNormalResponse STOREREQUESTED _meta1 _meta2 _status _details) -> do
+          putStrLn "STORE request received by successor"
+
+        (ClientErrorResponse err) -> do
+          print err
+  --succ <- takeMVar mSucc
+  --hashDoArquivo <- hash fileName
+  --bytesDoArquivo <- open fileName filePath
+  --let
+  --  config = makeConfig succ
+  --  msg = STORE
+  --    { key = hashDoArquivo
+  --    , size = length bytesDoArquivo
+  --    , values = bytesDoArquivo
+  --    , keyTest = hashDoArquivo
+  --    }
+  --Chord{ chordStore } <- chordClient client
+  --chordStore config msg

@@ -32,6 +32,9 @@ hashTestFromDHTNode :: DHTNode -> Int
 hashTestFromDHTNode (DHTNode (Host host) (Port port)) =
   hashTestFromRaw (byteStringToLText host) (fromIntegral port)
 
+hashTestFile :: FileName -> Int
+hashTestFile = (`mod` 8) . sum . map ord
+
 -- hash utilities
 -- based on https://fgiesen.wordpress.com/2015/09/24/intervals-in-modular-arithmetic/
 cwDist :: Int -> Int -> Int -> Int

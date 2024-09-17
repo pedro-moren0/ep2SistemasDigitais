@@ -18,7 +18,7 @@ import Data.Text.Lazy as TL
 import qualified Data.Text as T
 import Data.Text.Encoding (encodeUtf8)
 import GHC.Generics
-import Data.ByteString
+import qualified Data.ByteString as BS
 
 import Data.Hashable (hash)
 import qualified GHC.Word
@@ -52,7 +52,7 @@ handlers me mPred mSucc = Chord
   , chordNewNode = newNodeHandler mSucc
   , chordLeave = leaveHandler mPred
   , chordNodeGone = nodeGoneHandler mSucc
-  , chordStore = storeHandler
+  , chordStore = storeHandler me mPred mSucc
   , chordRetrieve = retrieveHandler
   , chordTransfer = transferHandler
   }
@@ -202,7 +202,7 @@ joinOkHandler
     _ <- putMVar mPred newPred
     _ <- putMVar mSucc newSucc
 
-    createDirectory $ nodeDir <> "/" <> show joinIdTest
+    createDirectoryIfMissing False $ nodeDir <> "/" <> show joinIdTest
     -- putStrLn $ "JoinOk pred: " <> show newPred
     -- putStrLn $ "JoinOk succ: " <> show newSucc
 
@@ -270,11 +270,66 @@ nodeGoneHandler mSucc (ServerNormalRequest _metadata (NODEGONE _ succIp succPort
 
 
 -- Definições dos handlers não implementados:
-storeHandler :: ServerRequest 'Normal STORE STOREREQUESTED -> IO (ServerResponse 'Normal STOREREQUESTED)
-storeHandler _ = do
-  -- Implementar o comportamento desejado ou lançar uma exceção
-  error "storeHandler não implementado"
+storeHandler :: Me ->
+  MVar PredecessorNode ->
+  MVar SuccessorNode ->
+  ServerRequest 'Normal STORE STOREREQUESTED ->
+  IO (ServerResponse 'Normal STOREREQUESTED)
+storeHandler
+  me
+  mPred
+  mSucc
+  (ServerNormalRequest _meta storeMsg@(STORE key _ value keyTest)) = do
+    -- acessa o predecessor deste no e faz o lock nessa variavel
+    pred <- takeMVar mPred
 
+    -- calcula o hash deste no e do predecessor deste no
+    -- ATENCAO: estamos usando o hash de teste, que e so um Int comum e varia
+    -- de 0 a 7. depois temos que trocar para o hash de verdade
+    let
+      myHash = hashTestFromDHTNode me
+      predHash = hashTestFromDHTNode pred
+      candidateHash = fromIntegral keyTest
+
+    _ <- if isResponsible predHash myHash candidateHash
+      then do
+        -- guarda o arquivo na pasta data, sob o indice desse no
+        BS.writeFile (nodeDir <> "/" <> show myHash <> "/" <> show keyTest) value
+        
+        -- destranca predecessor
+        putMVar mPred pred
+      else do
+        -- destrava a variavel do predecessor. nao precisamos dela nesse caso
+        putMVar mPred pred
+
+        -- acessa o sucessor deste no e faz o lock na variavel
+        succ@(DHTNode succHost succPort) <- takeMVar mSucc
+
+        -- reenvia o pedido de join para o sucessor deste nó
+        _ <- forkIO $ sendStore (makeClientConfig succHost succPort) storeMsg
+
+        -- destrava a variavel do sucessor
+        putMVar mSucc succ
+    return $ ServerNormalResponse STOREREQUESTED [] StatusOk ""
+
+    where
+      sendStore :: ClientConfig -> STORE -> IO ()
+      sendStore config req = withGRPCClient config $ \client -> do
+        putStrLn "Sending STORE to successor"
+        Chord{ chordStore } <- chordClient client
+        fullRes <- chordStore (ClientNormalRequest req 10 mempty)
+
+        case fullRes of
+          (ClientNormalResponse STOREREQUESTED _meta1 _meta2 _status _details) -> do
+            putStrLn "STORE request received by successor"
+
+          (ClientErrorResponse err) -> do
+            print err
+
+  -- se isResponsible req.key entao
+  --   guardar o arquivo na minha pasta
+  -- senao
+  --   store succ req
 
 
 retrieveHandler :: ServerRequest 'Normal RETRIEVE RETRIEVERESPONSE -> IO (ServerResponse 'Normal RETRIEVERESPONSE)

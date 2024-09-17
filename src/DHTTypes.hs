@@ -10,3 +10,5 @@ type Me = DHTNode
 instance Show DHTNode where
   show (DHTNode (Host h) (Port p)) =
     "DHTNode { host = " ++ show h ++ ", port = " ++ show p ++ " }"
+
+type FileName = String
