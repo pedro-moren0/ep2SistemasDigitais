@@ -108,6 +108,11 @@ tui portNumber = do
           filePath <- getLine
           store successorNode fileName filePath
           loop predecessorNode successorNode currentNode
+        "6" -> do
+          putStrLn "Digite o nome do arquivo (com extensão):"
+          fileName <- getLine
+          retrieve currentNode successorNode fileName
+          loop predecessorNode successorNode currentNode
         "x" -> return ()
         "d" -> do
           putStrLn "Digite o nome do arquivo (com extensão):"
@@ -148,7 +153,7 @@ interactiveNodeConexion me mPred mSucc = do
 
           response <- join config me
           case response of
-            ClientNormalResponse _ _ _ _ _ -> do
+            ClientNormalResponse {} -> do
               putStrLn "Bem vindo à rede! :)"
             ClientErrorResponse err -> do
               print err
@@ -246,9 +251,11 @@ leave me mPred mSucc = do
         (ClientErrorResponse err) -> do
           print err
 
+
+
 store :: MVar SuccessorNode -> FileName -> FilePath -> IO ()
 store mSucc fileName filePath = do
-  succ <- takeMVar mSucc
+  succ <- takeMVar mSucc -- TODO: trocar para readMVar
   fileContent <- BS.readFile $ filePath <> fileName
 
   let
@@ -275,16 +282,70 @@ store mSucc fileName filePath = do
 
         (ClientErrorResponse err) -> do
           print err
-  --succ <- takeMVar mSucc
-  --hashDoArquivo <- hash fileName
-  --bytesDoArquivo <- open fileName filePath
-  --let
-  --  config = makeConfig succ
-  --  msg = STORE
-  --    { key = hashDoArquivo
-  --    , size = length bytesDoArquivo
-  --    , values = bytesDoArquivo
-  --    , keyTest = hashDoArquivo
-  --    }
-  --Chord{ chordStore } <- chordClient client
-  --chordStore config msg
+
+
+
+retrieve :: Me -> MVar SuccessorNode -> FileName -> IO ()
+retrieve me mSucc fileName = do
+  succ <- readMVar mSucc
+
+  let
+    retrieveMsg = RETRIEVE
+      { retrieveRequirerPort=fromIntegral $ unPort $ getPort me
+      , retrieveRequirerIp=byteStringToLText $ unHost $ getHost me
+      , retrieveRequirerIdTes=fromIntegral $ hashTestFromDHTNode me
+      , retrieveRequirerId=fromIntegral $ hashTestFromDHTNode me
+      , retrieveKeyTest=fromIntegral $ hashTestFile fileName
+      , retrieveKey=fromIntegral $ hashTestFile fileName
+      }
+    config = makeClientConfig (getHost succ) (getPort succ)
+
+  sendRetrieve config retrieveMsg
+  where
+    sendRetrieve :: ClientConfig -> RETRIEVE -> IO ()
+    sendRetrieve config req = withGRPCClient config $ \client -> do
+      putStrLn "Sending RETRIEVE to successor"
+      Chord{ chordRetrieve } <- chordClient client
+      fullRes <- chordRetrieve (ClientNormalRequest req 10 mempty)
+
+      case fullRes of
+        (ClientNormalResponse
+          (RETRIEVERESPONSE
+            (Just
+              (RETRIEVERESPONSEResponseOk
+                (OK _key _size value _keyTest))))
+          _meta1
+          _meta2
+          _status
+          _details) -> do
+          putStrLn "Arquivo encontrado. Salvando em downloads..."
+          BS.writeFile ("downloads/" <> fileName) value
+
+
+        (ClientNormalResponse
+          (RETRIEVERESPONSE
+            (Just
+              (RETRIEVERESPONSEResponseNotFound
+                NOTFOUND)))
+          _meta1
+          _meta2
+          _status
+          _details) -> do
+          putStrLn "O arquivo solicitado não está presente na rede :("
+
+        -- Sinceramente nao entendo quando esse caso acontece
+        -- Adicionando somente para completar o pattern matching
+        (ClientNormalResponse
+          (RETRIEVERESPONSE Nothing)
+          _meta1
+          _meta2
+          _status
+          _details) -> do
+          putStrLn "Houve um erro no RETRIEVE"
+
+        (ClientErrorResponse err) -> do
+          print err
+-- montar a requisição de RETRIEVE
+-- faz o envio para chordRetrieve
+-- se a resposta for OK, salva o arquivo em downloads
+-- se a resposta for NOT_FOUND, printa na tela
