@@ -49,6 +49,7 @@ library
     , grpc-haskell
     , grpc-haskell-core
     , hashable
+    , iproute
     , proto3-suite
     , proto3-wire
     , text
@@ -75,6 +76,7 @@ executable ep2-exe
     , grpc-haskell
     , grpc-haskell-core
     , hashable
+    , iproute
     , proto3-suite
     , proto3-wire
     , text
@@ -103,6 +105,7 @@ test-suite ep2-test
     , grpc-haskell
     , grpc-haskell-core
     , hashable
+    , iproute
     , proto3-suite
     , proto3-wire
     , tasty-hunit

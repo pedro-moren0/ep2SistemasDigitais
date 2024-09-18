@@ -2,6 +2,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Peer (module Peer) where
 
@@ -31,7 +32,6 @@ import System.Directory
 
 
 
-
 menuOptionList :: String
 menuOptionList =
   "=============================\n\
@@ -46,21 +46,19 @@ menuOptionList =
   \=============================\n\
   \"
 
-hashTest :: Int -> Int32
-hashTest = fromIntegral
-
-tui :: Port -> IO ()
-tui portNumber = do
+tui :: Host -> Port -> IO ()
+tui host port = do
+  print host
   -- inicializa os mVars do predecessor e do sucessor
-  (predecessorNode :: MVar PredecessorNode) <- newEmptyMVar
-  (successorNode :: MVar SuccessorNode) <- newEmptyMVar
-  let currentNode = DHTNode (Host $ BSC8.pack "localhost") portNumber -- Inicializa o nó atual
+  (mPred :: MVar PredecessorNode) <- newEmptyMVar
+  (mSucc :: MVar SuccessorNode) <- newEmptyMVar
+  let me = DHTNode (Host "localhost") port -- Inicializa o nó atual
 
   -- escutando requisicoes no background...
-  _ <- forkIO $ runServer (Host $ BSC8.pack "localhost") portNumber predecessorNode successorNode
+  _ <- forkIO $ runServer (Host "localhost") port mPred mSucc
 
   -- inicializa o "REPL" da aplicacao
-  loop predecessorNode successorNode currentNode
+  loop mPred mSucc me
 
   where
     loop :: MVar PredecessorNode -> MVar SuccessorNode -> Me -> IO ()
@@ -81,23 +79,23 @@ tui portNumber = do
           -- Exibir o ID do predecessor, se existir
           maybePredecessor <- tryReadMVar predecessorNode
           case maybePredecessor of
-            Just predNode@(DHTNode _ (Port port)) ->
+            Just predNode@(DHTNode _ (Port predPort)) ->
               putStrLn
                 $ "ID do predecessor: "
                 <> show (hashTestFromDHTNode predNode)
                 <> ", porta: "
-                <> show port
+                <> show predPort
             Nothing -> putStrLn "Predecessor não definido."
 
           -- Exibir o ID do sucessor, se existir
           maybeSuccessor <- tryReadMVar successorNode
           case maybeSuccessor of
-            Just succNode@(DHTNode _ (Port port)) ->
+            Just succNode@(DHTNode _ (Port succPort)) ->
               putStrLn
                 $ "ID do sucessor: "
                 <> show (hashTestFromDHTNode succNode)
                 <> ", porta: "
-                <> show port
+                <> show succPort
             Nothing -> putStrLn "Sucessor não definido."
 
           loop predecessorNode successorNode currentNode
@@ -122,6 +120,8 @@ tui portNumber = do
         _ -> do
           putStrLn "Opção inválida"
           loop predecessorNode successorNode currentNode
+
+
 
 interactiveNodeConexion :: Me ->
   MVar PredecessorNode ->

@@ -33,6 +33,7 @@ dependencies:
 - aeson
 - hashable
 - directory
+- iproute
 
 ghc-options:
 - -Wall
