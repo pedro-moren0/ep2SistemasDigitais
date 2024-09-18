@@ -7,7 +7,8 @@ module Peer (module Peer) where
 
 import Chord
 import DHTTypes
-import ServerSide (runServer)
+import ServerSide (runServer, sendTransfer)
+import Constants
 
 import Control.Concurrent (forkIO, MVar, newEmptyMVar)
 import Network.GRPC.HighLevel
@@ -26,7 +27,6 @@ import Text.Read (readMaybe)
 import Utils
 import Prelude hiding (pred, succ, catch)
 import Control.Exception.Base
-import Constants
 import System.Directory
 
 
@@ -196,6 +196,7 @@ leave me mPred mSucc = do
   succ <- takeMVar mSucc
 
   let
+    myHash = hashTestFromDHTNode me
     predConfig = makeClientConfig (getHost pred) (getPort pred)
     succConfig = makeClientConfig (getHost succ) (getPort succ)
     leaveMsg = LEAVE
@@ -219,6 +220,9 @@ leave me mPred mSucc = do
   sendNodeGone predConfig nodeGoneMsg
 
   -- TRANSFER
+  let pathToMyFiles = nodeDir <> "/" <> show myHash
+  allMyFiles <- listDirectory pathToMyFiles
+  sendTransfer (nodeDir <> "/" <> show (hashTestFromDHTNode me)) allMyFiles succConfig
 
   -- apos mensagem de sucesso de transfer, apagar toda a pasta e arquivos
   removeDirectoryRecursive $ nodeDir <> "/" <> show (hashTestFromDHTNode me)
@@ -309,43 +313,8 @@ retrieve me mSucc fileName = do
       fullRes <- chordRetrieve (ClientNormalRequest req 10 mempty)
 
       case fullRes of
-        (ClientNormalResponse
-          (RETRIEVERESPONSE
-            (Just
-              (RETRIEVERESPONSEResponseOk
-                (OK _key _size value _keyTest))))
-          _meta1
-          _meta2
-          _status
-          _details) -> do
-          putStrLn "Arquivo encontrado. Salvando em downloads..."
-          BS.writeFile ("downloads/" <> fileName) value
-
-
-        (ClientNormalResponse
-          (RETRIEVERESPONSE
-            (Just
-              (RETRIEVERESPONSEResponseNotFound
-                NOTFOUND)))
-          _meta1
-          _meta2
-          _status
-          _details) -> do
-          putStrLn "O arquivo solicitado não está presente na rede :("
-
-        -- Sinceramente nao entendo quando esse caso acontece
-        -- Adicionando somente para completar o pattern matching
-        (ClientNormalResponse
-          (RETRIEVERESPONSE Nothing)
-          _meta1
-          _meta2
-          _status
-          _details) -> do
-          putStrLn "Houve um erro no RETRIEVE"
+        (ClientNormalResponse RETRIEVEACK _meta1 _meta2 _status _details) -> do
+          putStrLn "RETRIEVE request received by a node"
 
         (ClientErrorResponse err) -> do
           print err
--- montar a requisição de RETRIEVE
--- faz o envio para chordRetrieve
--- se a resposta for OK, salva o arquivo em downloads
--- se a resposta for NOT_FOUND, printa na tela

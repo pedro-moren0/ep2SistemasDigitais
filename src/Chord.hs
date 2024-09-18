@@ -61,8 +61,10 @@ data Chord request response
                              -> (Hs.IO (response 'HsGRPC.Normal Chord.NODEGONEOK))),
            chordStore :: ((request 'HsGRPC.Normal Chord.STORE Chord.STOREREQUESTED)
                           -> (Hs.IO (response 'HsGRPC.Normal Chord.STOREREQUESTED))),
-           chordRetrieve :: ((request 'HsGRPC.Normal Chord.RETRIEVE Chord.RETRIEVERESPONSE)
-                             -> (Hs.IO (response 'HsGRPC.Normal Chord.RETRIEVERESPONSE))),
+           chordRetrieve :: ((request 'HsGRPC.Normal Chord.RETRIEVE Chord.RETRIEVEACK)
+                             -> (Hs.IO (response 'HsGRPC.Normal Chord.RETRIEVEACK))),
+           chordRetrieveFinished :: ((request 'HsGRPC.Normal Chord.RETRIEVERESPONSE Chord.RETRIEVEACK)
+                                     -> (Hs.IO (response 'HsGRPC.Normal Chord.RETRIEVEACK))),
            chordTransfer :: ((request 'HsGRPC.ClientStreaming Chord.TRANSFER Chord.TRANSFEROK)
                              -> (Hs.IO (response 'HsGRPC.ClientStreaming Chord.TRANSFEROK))),
            chordJoin :: ((request 'HsGRPC.Normal Chord.JOIN Chord.JOINOK)
@@ -75,8 +77,8 @@ chordServer ::
   -> HsGRPC.ServiceOptions -> Hs.IO ()
 chordServer
   Chord {chordJoinV2, chordJoinOk, chordNewNode, chordLeave,
-         chordNodeGone, chordStore, chordRetrieve, chordTransfer, chordJoin,
-         chordRoute}
+         chordNodeGone, chordStore, chordRetrieve, chordRetrieveFinished,
+         chordTransfer, chordJoin, chordRoute}
   (ServiceOptions serverHost serverPort useCompression
                   userAgentPrefix userAgentSuffix initialMetadata sslConfig logger
                   serverMaxReceiveMessageLength serverMaxMetadataSize)
@@ -103,6 +105,9 @@ chordServer
                                      HsGRPC.UnaryHandler
                                        (HsGRPC.MethodName "/chord.Chord/Retrieve")
                                        (HsGRPC.convertGeneratedServerHandler chordRetrieve),
+                                     HsGRPC.UnaryHandler
+                                       (HsGRPC.MethodName "/chord.Chord/RetrieveFinished")
+                                       (HsGRPC.convertGeneratedServerHandler chordRetrieveFinished),
                                      HsGRPC.UnaryHandler
                                        (HsGRPC.MethodName "/chord.Chord/Join")
                                        (HsGRPC.convertGeneratedServerHandler chordJoin),
@@ -162,6 +167,11 @@ chordClient client
            <*>
              HsGRPC.clientRegisterMethod
                client (HsGRPC.MethodName "/chord.Chord/Retrieve"))
+      <*>
+        (Hs.pure (HsGRPC.clientRequest client)
+           <*>
+             HsGRPC.clientRegisterMethod
+               client (HsGRPC.MethodName "/chord.Chord/RetrieveFinished"))
       <*>
         (Hs.pure (HsGRPC.clientRequest client)
            <*>
@@ -1337,6 +1347,39 @@ instance (HsJSONPB.ToSchema RETRIEVE) where
                                                                                 retrieveRequirerPort),
                                                                                ("keyTest", 
                                                                                 retrieveKeyTest)]}}
+data RETRIEVEACK
+  = RETRIEVEACK {}
+  deriving (Hs.Show, Hs.Eq, Hs.Ord, Hs.Generic)
+instance (Hs.NFData RETRIEVEACK)
+instance (HsProtobuf.Named RETRIEVEACK) where
+  nameOf _ = Hs.fromString "RETRIEVEACK"
+instance (HsProtobuf.HasDefault RETRIEVEACK)
+instance (HsProtobuf.Message RETRIEVEACK) where
+  encodeMessage _ RETRIEVEACK {} = Hs.mempty
+  decodeMessage _ = Hs.pure RETRIEVEACK
+  dotProto _ = []
+instance (HsJSONPB.ToJSONPB RETRIEVEACK) where
+  toJSONPB RETRIEVEACK = HsJSONPB.object []
+  toEncodingPB RETRIEVEACK = HsJSONPB.pairs []
+instance (HsJSONPB.FromJSONPB RETRIEVEACK) where
+  parseJSONPB
+    = HsJSONPB.withObject "RETRIEVEACK" (\ obj -> Hs.pure RETRIEVEACK)
+instance (HsJSONPB.ToJSON RETRIEVEACK) where
+  toJSON = HsJSONPB.toAesonValue
+  toEncoding = HsJSONPB.toAesonEncoding
+instance (HsJSONPB.FromJSON RETRIEVEACK) where
+  parseJSON = HsJSONPB.parseJSONPB
+instance (HsJSONPB.ToSchema RETRIEVEACK) where
+  declareNamedSchema _
+    = do Hs.return
+           HsJSONPB.NamedSchema
+             {HsJSONPB._namedSchemaName = Hs.Just "RETRIEVEACK",
+              HsJSONPB._namedSchemaSchema = Hs.mempty
+                                              {HsJSONPB._schemaParamSchema = Hs.mempty
+                                                                               {HsJSONPB._paramSchemaType = Hs.Just
+                                                                                                              HsJSONPB.SwaggerObject},
+                                               HsJSONPB._schemaProperties = HsJSONPB.insOrdFromList
+                                                                              []}}
 data OK
   = OK {okKey :: Hs.Word64,
         okSize :: Hs.Int32,

@@ -9,7 +9,10 @@ service Chord {
   rpc Leave (LEAVE) returns (LEAVE_OK) {}
   rpc NodeGone (NODE_GONE) returns (NODE_GONE_OK) {}
   rpc Store (STORE) returns (STORE_REQUESTED) {}
-  rpc Retrieve (RETRIEVE) returns (RETRIEVE_RESPONSE) {}
+
+  rpc Retrieve (RETRIEVE) returns (RETRIEVE_ACK) {}
+  rpc RetrieveFinished (RETRIEVE_RESPONSE) returns (RETRIEVE_ACK) {}
+
   rpc Transfer (stream TRANSFER) returns (TRANSFER_OK) {}
 
   rpc Join(JOIN) returns (JOIN_OK) { option deprecated = true; }
@@ -78,6 +81,8 @@ message RETRIEVE {
   uint32 requirerPort = 10;
   int32 keyTest = 2001;
 }
+
+message RETRIEVE_ACK { }
 
 message OK {
   fixed64 key = 27;

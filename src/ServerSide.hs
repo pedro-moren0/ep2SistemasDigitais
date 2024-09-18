@@ -6,7 +6,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE NamedFieldPuns #-}
 
-module ServerSide (runServer) where
+module ServerSide (runServer, sendTransfer) where
 
 import Chord
 import DHTTypes
@@ -26,7 +26,6 @@ import Prelude hiding (succ, pred)
 import Network.GRPC.LowLevel.Call (endpoint)
 import System.Directory
 import Constants
-
 
 
 
@@ -54,8 +53,10 @@ handlers me mPred mSucc = Chord
   , chordNodeGone = nodeGoneHandler mSucc
   , chordStore = storeHandler me mPred mSucc
   , chordRetrieve = retrieveHandler me mPred mSucc
-  , chordTransfer = transferHandler
+  , chordRetrieveFinished = retrieveFinishedHandler
+  , chordTransfer = transferHandler me
   }
+
 
 joinV2Handler :: Me ->
   MVar PredecessorNode ->
@@ -76,7 +77,7 @@ joinV2Handler
     -- ATENCAO: estamos usando o hash de teste, que e so um Int comum e varia
     -- de 0 a 7. depois temos que trocar para o hash de verdade
     let
-      newNode@(DHTNode newNodeHost newNodePort) = makeDHTNode joinIp joinPort
+      joinedNode@(DHTNode joinedNodeHost joinedNodePort) = makeDHTNode joinIp joinPort
       myHash = hashTestFromDHTNode me
       predHash = hashTestFromDHTNode pred
       candidateHash = fromIntegral joinIdTest
@@ -111,11 +112,18 @@ joinV2Handler
         _ <- forkIO $ sendNewNode (makeClientConfig (getHost pred) (getPort pred)) newNodeMsg
 
         -- manda mensagem para o novo nó avisando que ele entrou na rede
-        _ <- forkIO $ sendJoinOk (makeClientConfig newNodeHost newNodePort) joinOkMsg
+        let
+          joinedNodeConfig = makeClientConfig joinedNodeHost joinedNodePort
+          pathToMyFiles = nodeDir <> "/" <> show myHash
+
+        allMyFiles <- listDirectory pathToMyFiles
+        let filesToTransfer = retrieveFilesForTransfer predHash candidateHash allMyFiles
+        sendJoinOk joinedNodeConfig joinOkMsg
+        _ <- forkIO $ sendTransfer pathToMyFiles filesToTransfer joinedNodeConfig
 
         -- atualiza o predecessor desse nó
-        putMVar mPred newNode
-        putStrLn $ "JoinV2 pred: " <> show newNode
+        putMVar mPred joinedNode
+        putStrLn $ "JoinV2 pred: " <> show joinedNode
 
       -- se o id do novo nó não é responsabilidade deste nó
       else do
@@ -295,7 +303,7 @@ storeHandler
       then do
         -- guarda o arquivo na pasta data, sob o indice desse no
         BS.writeFile (nodeDir <> "/" <> show myHash <> "/" <> show keyTest) value
-        
+
         -- destranca predecessor
         putMVar mPred pred
       else do
@@ -313,6 +321,7 @@ storeHandler
     return $ ServerNormalResponse STOREREQUESTED [] StatusOk ""
 
     where
+
       sendStore :: ClientConfig -> STORE -> IO ()
       sendStore config req = withGRPCClient config $ \client -> do
         putStrLn "Sending STORE to successor"
@@ -331,8 +340,8 @@ storeHandler
 retrieveHandler :: Me ->
   MVar PredecessorNode ->
   MVar SuccessorNode ->
-  ServerRequest 'Normal RETRIEVE RETRIEVERESPONSE ->
-  IO (ServerResponse 'Normal RETRIEVERESPONSE)
+  ServerRequest 'Normal RETRIEVE RETRIEVEACK ->
+  IO (ServerResponse 'Normal RETRIEVEACK)
 retrieveHandler
   me
   mPred
@@ -340,51 +349,170 @@ retrieveHandler
   (ServerNormalRequest
     _meta
     retrieveMsg@(RETRIEVE key _ _ requirerIp requiererPort keyTest)) = do
-  -- -- acessa o predecessor deste no e faz o lock nessa variavel
-  -- pred <- takeMVar mPred
 
-  -- -- calcula o hash deste no e do predecessor deste no
-  -- -- ATENCAO: estamos usando o hash de teste, que e so um Int comum e varia
-  -- -- de 0 a 7. depois temos que trocar para o hash de verdade
-  -- let
-  --   myHash = hashTestFromDHTNode me
-  --   predHash = hashTestFromDHTNode pred
-  --   candidateHash = fromIntegral keyTest
-  -- _ <- if isResponsible predHash myHash candidateHash
-  --   then do
-  --     fileContent <- BS.readFile (nodeDir <> "/" <> show myHash)
-  --     if BS.empty /= fileContent
-  --       then do
-  --         -- devolve OK
-  --       else do
-  --         -- devolve NOT_FOUND
-  --   else do
-  --     -- roteia a mensagem
-  return undefined
-  -- se eu sou responsavel pela chave
-    -- tento achar o arquivo na minha pasta
-    -- se eu achar o arquivo na minha pasta
-      -- monto a resposta com o OK
-      -- faço o envio da mensagem
-    -- senao
-      -- monto a resposta com NOT_FOUND
-      -- faço o envio da resposta
-  -- senao
-    -- envio a mesma mensagem para o meu sucessor
+  -- acessa o predecessor deste no e faz o lock nessa variavel
+  pred <- takeMVar mPred
+
+  -- calcula o hash deste no e do predecessor deste no
+  -- ATENCAO: estamos usando o hash de teste, que e so um Int comum e varia
+  -- de 0 a 7. depois temos que trocar para o hash de verdade
+  let
+    myHash = hashTestFromDHTNode me
+    predHash = hashTestFromDHTNode pred
+    candidateHash = fromIntegral keyTest
+
+  _ <- if isResponsible predHash myHash candidateHash
+    then do
+      -- destrava o predecessor
+      putMVar mPred pred
+
+      retrieveFinishedSetup
+        (makeClientConfig (textToHost requirerIp) (toPort requiererPort))
+    else do
+      -- roteia a mensagem
+      -- destrava a variavel do predecessor. nao precisamos dela nesse caso
+      putMVar mPred pred
+
+      -- acessa o sucessor deste no e faz o lock na variavel
+      succ@(DHTNode succHost succPort) <- takeMVar mSucc
+
+      -- reenvia o pedido de join para o sucessor deste nó
+      _ <- forkIO $ sendRetrieve (makeClientConfig succHost succPort) retrieveMsg
+
+      -- destrava a variavel do sucessor
+      putMVar mSucc succ
+
+  return $ ServerNormalResponse RETRIEVEACK [] StatusOk ""
+
+    where
+
+      sendRetrieve :: ClientConfig -> RETRIEVE -> IO ()
+      sendRetrieve config req = withGRPCClient config $ \client -> do
+        putStrLn "Sending RETRIEVE to successor"
+        Chord{ chordRetrieve } <- chordClient client
+        fullRes <- chordRetrieve (ClientNormalRequest req 10 mempty)
+
+        case fullRes of
+          (ClientNormalResponse RETRIEVEACK _meta1 _meta2 _status _details) -> do
+            putStrLn "RETRIEVE request received by a node"
+
+          (ClientErrorResponse err) -> do
+            print err
+
+      retrieveFinishedSetup :: ClientConfig -> IO ()
+      retrieveFinishedSetup config = do
+        let
+          fileNameWithPath =
+            nodeDir
+            <> "/"
+            <> show (hashTestFromDHTNode me)
+            <> "/"
+            <> show keyTest
+
+        fileExists <- doesFileExist fileNameWithPath
+        req <- if fileExists
+          then do
+            fileContent <- BS.readFile fileNameWithPath
+            let
+              okMsg = OK
+                { okValue=fileContent
+                , okSize=fromIntegral $ BS.length fileContent
+                , okKeyTest=keyTest
+                , okKey=key
+                }
+            return (RETRIEVERESPONSE (Just (RETRIEVERESPONSEResponseOk okMsg)))
+          else do
+            return (RETRIEVERESPONSE (Just (RETRIEVERESPONSEResponseNotFound NOTFOUND)))
+        sendRetrieveFinished config req
+
+      sendRetrieveFinished :: ClientConfig -> RETRIEVERESPONSE -> IO ()
+      sendRetrieveFinished config req = withGRPCClient config $ \client -> do
+        putStrLn "Sending RETRIEVE_RESPONSE to requierer"
+        Chord{ chordRetrieveFinished } <- chordClient client
+        fullRes <- chordRetrieveFinished (ClientNormalRequest req 10 mempty)
+
+        case fullRes of
+          (ClientNormalResponse RETRIEVEACK _meta1 _meta2 _status _details) -> do
+            putStrLn "RETRIEVE_RESPONSE acked by requierer"
+
+          (ClientErrorResponse err) -> do
+            print err
+
+retrieveFinishedHandler :: ServerRequest 'Normal RETRIEVERESPONSE RETRIEVEACK ->
+  IO (ServerResponse 'Normal RETRIEVEACK)
+-- caminho feliz: o arquivo foi encontrado e entregue
+retrieveFinishedHandler
+  (ServerNormalRequest _metadata (RETRIEVERESPONSE
+    (Just (RETRIEVERESPONSEResponseOk (OK key _ value keyTest))))) = do
+  putStrLn "Arquivo encontrado! Salvando na pasta downloads..."
+  BS.writeFile ("downloads/" <> show keyTest) value
+  return $ ServerNormalResponse RETRIEVEACK [] StatusOk ""
+
+-- caminho triste: o arquivo nao esta na rede
+retrieveFinishedHandler
+  (ServerNormalRequest _metadata (RETRIEVERESPONSE
+    (Just (RETRIEVERESPONSEResponseNotFound NOTFOUND)))) = do
+  putStrLn "O arquivo requerido não existe na rede"
+  return $ ServerNormalResponse RETRIEVEACK [] StatusOk ""
+
+-- Sinceramente nao entendo quando esse caso acontece
+-- Adicionando somente para completar o pattern matching
+retrieveFinishedHandler
+  (ServerNormalRequest _metadata (RETRIEVERESPONSE Nothing)) = do
+  putStrLn "RETRIEVE_RESPONSE sem conteúdo :("
+  return $ ServerNormalResponse RETRIEVEACK [] StatusDataLoss ""
 
 
 
-transferHandler :: ServerRequest 'ClientStreaming TRANSFER TRANSFEROK ->
+sendTransfer :: FilePath -> [FileName] -> ClientConfig -> IO ()
+sendTransfer filePath fileNames config = withGRPCClient config $ \client -> do
+  let appendPath fileName = filePath <> "/" <> fileName
+  Chord{ chordTransfer } <- chordClient client
+  ClientWriterResponse reply _ _ _ _ <- chordTransfer
+    $ ClientWriterRequest 10 [] $ \send -> do
+      mapM_
+        (\fileName -> do
+          fileContent <- BS.readFile (appendPath fileName)
+          let
+            transferReq = TRANSFER
+              { transferValue=fileContent
+              , transferKeyTest=fromIntegral $ hashTestFile fileName
+              , transferKey=fromIntegral $ hashTestFile fileName
+              }
+          send transferReq)
+        fileNames
+  putStrLn $ case reply of
+    Just _ -> "Arquivos transferidos com sucesso"
+    Nothing -> "O Stream falhou"
+
+  -- remove arquivos que foram transferidos
+  mapM_
+    (\fileName -> removeFile (appendPath fileName))
+    fileNames
+
+
+
+transferHandler :: Me -> ServerRequest 'ClientStreaming TRANSFER TRANSFEROK ->
   IO (ServerResponse 'ClientStreaming TRANSFEROK)
-transferHandler _ = undefined
--- ler a mensagem do stream: msg <- recv
--- salvar os arquivos em uma pasta com o id do no
--- os arquivos devem ter o nome do campo key (ou keyTest) e os bytes do arquivo
---   devem ser os bytes do campo value
--- Dica: você tem que fazer um 'case msg of' e testar pelos seguintes casos:
---   Left err -> Significa que houve um erro no stream. Tratar a excecao
---   Right (Just ...) -> Significa que a mensagem chegou corretamente e mais
---     mensagens vao chegar
---   Right (Nothing) -> Significa que mais nenhuma mensagem vai chegar desse
---     stream
--- vide publishHandler do projeto 1
+transferHandler me transferStream@(ServerReaderRequest _metadata recv) = do
+  msg <- recv
+  case msg of
+    -- caso do erro
+    (Left err) -> do
+      print err
+      return
+        $ ServerReaderResponse Nothing [] StatusDataLoss "erro no TRANSFER"
+
+    -- caso chegou mensagem
+    (Right (Just (TRANSFER key value keyTest))) -> do
+      -- guardar arquivo na minha pasta
+      BS.writeFile
+        (nodeDir <> "/" <> show (hashTestFromDHTNode me) <> "/" <> show keyTest)
+        value
+      transferHandler me transferStream
+
+    -- caso stream acabou
+    (Right Nothing) -> do
+      putStrLn "[TRANSFER] --- Fim do stream"
+      return
+        $ ServerReaderResponse (Just TRANSFEROK) [] StatusOk "Stream encerrado com sucesso"

@@ -9,6 +9,7 @@ import Data.Text.Encoding (encodeUtf8, decodeUtf8)
 import Data.Char (ord)
 import qualified Data.ByteString as BS
 import Network.GRPC.LowLevel.Call (endpoint)
+import System.Directory (listDirectory)
 
 toPort :: Integral a => a -> Port
 toPort = Port . fromIntegral
@@ -75,3 +76,8 @@ isResponsible predHash myHash candidateHash =
   where
     predHashPlus1 = predHash + 1
     maxHash = 7
+
+-- reutilizando isResponsible para decidir quais arquivos deverao ser transferidos
+retrieveFilesForTransfer :: PredHash -> CandidateHash -> [FileName] -> [FileName]
+retrieveFilesForTransfer predHash candidateHash =
+  filter (isResponsible predHash candidateHash . hashTestFile)
