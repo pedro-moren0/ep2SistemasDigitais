@@ -52,10 +52,10 @@ tui host port = do
   -- inicializa os mVars do predecessor e do sucessor
   (mPred :: MVar PredecessorNode) <- newEmptyMVar
   (mSucc :: MVar SuccessorNode) <- newEmptyMVar
-  let me = DHTNode (Host "localhost") port -- Inicializa o nó atual
+  let me = DHTNode host port -- Inicializa o nó atual
 
   -- escutando requisicoes no background...
-  _ <- forkIO $ runServer (Host "localhost") port mPred mSucc
+  _ <- forkIO $ runServer host port mPred mSucc
 
   -- inicializa o "REPL" da aplicacao
   loop mPred mSucc me
