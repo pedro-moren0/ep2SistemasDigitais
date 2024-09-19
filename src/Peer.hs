@@ -11,23 +11,15 @@ import DHTTypes
 import ServerSide (runServer, sendTransfer)
 import Constants
 
-import Control.Concurrent (forkIO, MVar, newEmptyMVar)
-import Network.GRPC.HighLevel
+import Control.Concurrent
 import Network.GRPC.HighLevel.Generated
-import Network.GRPC.LowLevel.Call
 import Data.Text.Encoding
 import qualified Data.ByteString as BS
-import Data.ByteString.Char8 as BSC8 hiding (getLine, putStrLn)
 import Data.Text.Lazy as TL
-import Control.Concurrent.MVar
-import Data.Int (Int32)
-import Control.Exception
 
-import Data.Hashable (hash)
 import Text.Read (readMaybe)
 import Utils
-import Prelude hiding (pred, succ, catch)
-import Control.Exception.Base
+import Prelude hiding (pred, succ)
 import System.Directory
 
 
@@ -48,7 +40,6 @@ menuOptionList =
 
 tui :: Host -> Port -> IO ()
 tui host port = do
-  print host
   -- inicializa os mVars do predecessor e do sucessor
   (mPred :: MVar PredecessorNode) <- newEmptyMVar
   (mSucc :: MVar SuccessorNode) <- newEmptyMVar
@@ -58,69 +49,70 @@ tui host port = do
   _ <- forkIO $ runServer host port mPred mSucc
 
   -- inicializa o "REPL" da aplicacao
-  loop mPred mSucc me
+  loop me mPred mSucc
 
   where
-    loop :: MVar PredecessorNode -> MVar SuccessorNode -> Me -> IO ()
-    loop predecessorNode successorNode currentNode = do
+    loop :: Me -> MVar PredecessorNode -> MVar SuccessorNode -> IO ()
+    loop me mPred mSucc = do
       putStrLn menuOptionList
       s <- getLine
       case s of
         "1" -> do
-          interactiveNodeConexion currentNode predecessorNode successorNode
-          loop predecessorNode successorNode currentNode
+          interactiveNodeConexion me mPred mSucc
+          loop me mPred mSucc
         "2" -> do
-          leave currentNode predecessorNode successorNode
+          leave me mPred mSucc
         "3" -> do
-          let nodeId = hashTestFromDHTNode currentNode
-          putStrLn $ "Meu ID é: " ++ show nodeId
-          loop predecessorNode successorNode currentNode
+          let nodeId = hashTestFromDHTNode me
+          putStrLn $ "Meu ID é: " <> show (hashNodeID (unHost $ getHost me) (unPort $ getPort me))
+          putStrLn $ "Meu ID (teste) é: " ++ show nodeId
+          loop me mPred mSucc
         "4" -> do
-          -- Exibir o ID do predecessor, se existir
-          maybePredecessor <- tryReadMVar predecessorNode
-          case maybePredecessor of
-            Just predNode@(DHTNode _ (Port predPort)) ->
-              putStrLn
-                $ "ID do predecessor: "
-                <> show (hashTestFromDHTNode predNode)
-                <> ", porta: "
-                <> show predPort
-            Nothing -> putStrLn "Predecessor não definido."
+          putStrLn "Predecessor:"
+          printNode mPred
 
-          -- Exibir o ID do sucessor, se existir
-          maybeSuccessor <- tryReadMVar successorNode
-          case maybeSuccessor of
-            Just succNode@(DHTNode _ (Port succPort)) ->
-              putStrLn
-                $ "ID do sucessor: "
-                <> show (hashTestFromDHTNode succNode)
-                <> ", porta: "
-                <> show succPort
-            Nothing -> putStrLn "Sucessor não definido."
+          putStrLn "Sucessor:"
+          printNode mPred
 
-          loop predecessorNode successorNode currentNode
+          loop me mPred mSucc
         "5" -> do
           putStrLn "Digite o nome do arquivo (com extensão):"
           fileName <- getLine
           putStrLn "Digite o caminho para o nome do arquivo (com '/' no final):"
           filePath <- getLine
-          store successorNode fileName filePath
-          loop predecessorNode successorNode currentNode
+          store mSucc fileName filePath
+          loop me mPred mSucc
         "6" -> do
           putStrLn "Digite o nome do arquivo (com extensão):"
           fileName <- getLine
-          retrieve currentNode successorNode fileName
-          loop predecessorNode successorNode currentNode
+          retrieve me mSucc fileName
+          loop me mPred mSucc
         "x" -> return ()
         "d" -> do
           putStrLn "Digite o nome do arquivo (com extensão):"
           fileName <- getLine
-          print (hashTestFile fileName)
-          loop predecessorNode successorNode currentNode
+          putStrLn $ "ID do arquivo: " <> show (hashFileID fileName)
+          putStrLn $ "ID do arquivo (teste): " <> show (hashTestFile fileName)
+          loop me mPred mSucc
         _ -> do
           putStrLn "Opção inválida"
-          loop predecessorNode successorNode currentNode
+          loop me mPred mSucc
 
+
+
+printNode :: MVar DHTNode -> IO ()
+printNode mNode = do
+  maybePredecessor <- tryReadMVar mNode
+  case maybePredecessor of
+    Just node@(DHTNode (Host host) (Port port)) ->
+      putStrLn
+        $ "ID: "
+        <> show (hashTestFromDHTNode node)
+        <> ", host: "
+        <> show host
+        <> ", porta: "
+        <> show port
+    Nothing -> putStrLn "Nó não definido."
 
 
 interactiveNodeConexion :: Me ->
@@ -139,7 +131,7 @@ interactiveNodeConexion me mPred mSucc = do
       putMVar mSucc me
 
       -- inicializa a pasta na qual os arquivos serao guardados
-      createDirectoryIfMissing False $ nodeDir <> "/" <> show (hashTestFromDHTNode me)
+      createDirectoryIfMissing False $ nodeDir <> show (hashTestFromDHTNode me)
 
     -- tenta conexao com um no
     _ -> do
@@ -220,12 +212,12 @@ leave me mPred mSucc = do
   sendNodeGone predConfig nodeGoneMsg
 
   -- TRANSFER
-  let pathToMyFiles = nodeDir <> "/" <> show myHash
+  let pathToMyFiles = nodeDir <> show myHash
   allMyFiles <- listDirectory pathToMyFiles
-  sendTransfer (nodeDir <> "/" <> show (hashTestFromDHTNode me)) allMyFiles succConfig
+  sendTransfer (nodeDir <> show (hashTestFromDHTNode me)) allMyFiles succConfig
 
   -- apos mensagem de sucesso de transfer, apagar toda a pasta e arquivos
-  removeDirectoryRecursive $ nodeDir <> "/" <> show (hashTestFromDHTNode me)
+  removeDirectoryRecursive $ nodeDir <> show (hashTestFromDHTNode me)
 
   where
 

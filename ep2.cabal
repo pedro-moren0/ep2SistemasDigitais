@@ -42,14 +42,17 @@ library
   build-depends:
       aeson
     , base >=4.7 && <5
+    , binary
     , bytestring
     , containers
+    , cryptonite
     , deepseq
     , directory
     , grpc-haskell
     , grpc-haskell-core
     , hashable
     , iproute
+    , memory
     , proto3-suite
     , proto3-wire
     , text
@@ -68,8 +71,10 @@ executable ep2-exe
   build-depends:
       aeson
     , base >=4.7 && <5
+    , binary
     , bytestring
     , containers
+    , cryptonite
     , deepseq
     , directory
     , ep2
@@ -77,6 +82,7 @@ executable ep2-exe
     , grpc-haskell-core
     , hashable
     , iproute
+    , memory
     , proto3-suite
     , proto3-wire
     , text
@@ -97,8 +103,10 @@ test-suite ep2-test
       QuickCheck
     , aeson
     , base >=4.7 && <5
+    , binary
     , bytestring
     , containers
+    , cryptonite
     , deepseq
     , directory
     , ep2
@@ -106,6 +114,7 @@ test-suite ep2-test
     , grpc-haskell-core
     , hashable
     , iproute
+    , memory
     , proto3-suite
     , proto3-wire
     , tasty-hunit

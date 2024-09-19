@@ -3,13 +3,18 @@ module Utils (module Utils) where
 import DHTTypes
 
 import Network.GRPC.HighLevel.Generated
-import Data.Word (Word32)
+import Data.Word (Word32, Word64)
 import qualified Data.Text.Lazy as TL
 import Data.Text.Encoding (encodeUtf8, decodeUtf8)
 import Data.Char (ord)
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as BL
+import qualified Data.ByteString.Char8 as BSC8
 import Network.GRPC.LowLevel.Call (endpoint)
-import System.Directory (listDirectory)
+import Data.ByteString (ByteString)
+import Crypto.Hash (hashWith, SHA256(..))
+import Data.ByteArray (convert)
+import Data.Binary.Get (runGet, getWord64be)
 
 toPort :: Integral a => a -> Port
 toPort = Port . fromIntegral
@@ -36,23 +41,9 @@ hashTestFromDHTNode (DHTNode (Host host) (Port port)) =
 hashTestFile :: FileName -> Int
 hashTestFile = (`mod` 8) . sum . map ord
 
--- hash utilities
--- based on https://fgiesen.wordpress.com/2015/09/24/intervals-in-modular-arithmetic/
-cwDist :: Int -> Int -> Int -> Int
-cwDist a b = mod (b - a)
-
-ccwDist :: Int -> Int -> Int -> Int
-ccwDist a b = mod (a - b)
-
--- someHash esta dentro do intervalo (predHash, myHash] mod n sse
--- ao caminharmos em sentido anti-horario no anel, alcancamos myHash antes de
--- chegar a predHash (i.e., se dCcw(myHash, someHash) < dCcw(myHash, predHash))
 type CandidateHash = Int
 type MyHash = Int
 type PredHash = Int
-isRespTest :: CandidateHash -> MyHash -> PredHash -> Int -> Bool
-isRespTest someHash predHash myHash n =
-  ccwDist myHash someHash n < ccwDist myHash predHash n
 
 makeLogMessage :: String -> String -> TL.Text -> Word32 -> String
 makeLogMessage handlerName logMsg ip port =
@@ -81,3 +72,14 @@ isResponsible predHash myHash candidateHash =
 retrieveFilesForTransfer :: PredHash -> CandidateHash -> [FileName] -> [FileName]
 retrieveFilesForTransfer predHash candidateHash =
   filter (isResponsible predHash candidateHash . hashTestFile)
+
+-- Função que gera o hash SHA-256 e converte para Word64
+hashNodeID :: ByteString -> Int -> Word64
+hashNodeID ip port =
+    let portStr = BSC8.pack (show port)  -- Converte a porta para ByteString
+        combined = BS.concat [ip, BSC8.pack ":", portStr]  -- Concatena IP, ":" e porta
+        sha256Hash = convert (hashWith SHA256 combined) :: ByteString  -- Gera o hash SHA-256
+    in runGet getWord64be (BL.take 8 (BL.fromStrict sha256Hash))  -- Pega os primeiros 8 bytes e converte para Word64
+
+hashFileID :: FileName -> Word64
+hashFileID fileName = hashNodeID (BSC8.pack fileName) (length fileName)

@@ -34,6 +34,9 @@ dependencies:
 - hashable
 - directory
 - iproute
+- cryptonite
+- memory
+- binary
 
 ghc-options:
 - -Wall

@@ -2,8 +2,6 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE NamedFieldPuns #-}
 
 module ServerSide (runServer, sendTransfer) where
@@ -14,16 +12,9 @@ import Utils
 
 import Network.GRPC.HighLevel.Generated
 import Control.Concurrent
-import Data.Text.Lazy as TL
-import qualified Data.Text as T
-import Data.Text.Encoding (encodeUtf8)
-import GHC.Generics
 import qualified Data.ByteString as BS
 
-import Data.Hashable (hash)
-import qualified GHC.Word
 import Prelude hiding (succ, pred)
-import Network.GRPC.LowLevel.Call (endpoint)
 import System.Directory
 import Constants
 
@@ -82,12 +73,6 @@ joinV2Handler
       predHash = hashTestFromDHTNode pred
       candidateHash = fromIntegral joinIdTest
 
-    -- logs dos hashes
-    -- putStrLn $ "myHash: " <> show myHash
-    -- putStrLn $ "predHash: " <> show predHash
-    -- putStrLn $ "candidateHash: " <> show candidateHash
-    -- putStrLn $ "isResponsible: " <> show (isResponsible predHash myHash candidateHash)
-
     -- se o id do novo nó é responsabilidade deste nó
     _ <- if isResponsible predHash myHash candidateHash
       then do
@@ -114,7 +99,7 @@ joinV2Handler
         -- manda mensagem para o novo nó avisando que ele entrou na rede
         let
           joinedNodeConfig = makeClientConfig joinedNodeHost joinedNodePort
-          pathToMyFiles = nodeDir <> "/" <> show myHash
+          pathToMyFiles = nodeDir <> show myHash
 
         allMyFiles <- listDirectory pathToMyFiles
         let filesToTransfer = retrieveFilesForTransfer predHash candidateHash allMyFiles
@@ -191,6 +176,8 @@ joinV2Handler
             (ClientErrorResponse err) -> do
               print err
 
+
+
 joinOkHandler :: MVar PredecessorNode ->
   MVar SuccessorNode ->
   ServerRequest 'Normal JOINOK JOINSUCCESSFUL ->
@@ -210,17 +197,18 @@ joinOkHandler
     _ <- putMVar mPred newPred
     _ <- putMVar mSucc newSucc
 
-    createDirectoryIfMissing False $ nodeDir <> "/" <> show joinIdTest
-    -- putStrLn $ "JoinOk pred: " <> show newPred
-    -- putStrLn $ "JoinOk succ: " <> show newSucc
+    createDirectoryIfMissing False $ nodeDir <> show joinIdTest
 
     return $ ServerNormalResponse JOINSUCCESSFUL [] StatusOk ""
+
+
 
 -- | DEPRECATED
 joinHandler = undefined
 
 -- | DEPRECATED
 routeHandler = undefined
+
 
 
 newNodeHandler :: MVar SuccessorNode ->
@@ -302,7 +290,7 @@ storeHandler
     _ <- if isResponsible predHash myHash candidateHash
       then do
         -- guarda o arquivo na pasta data, sob o indice desse no
-        BS.writeFile (nodeDir <> "/" <> show myHash <> "/" <> show keyTest) value
+        BS.writeFile (nodeDir <> show myHash <> "/" <> show keyTest) value
 
         -- destranca predecessor
         putMVar mPred pred
@@ -383,7 +371,6 @@ retrieveHandler
       putMVar mSucc succ
 
   return $ ServerNormalResponse RETRIEVEACK [] StatusOk ""
-
     where
 
       sendRetrieve :: ClientConfig -> RETRIEVE -> IO ()
@@ -404,7 +391,6 @@ retrieveHandler
         let
           fileNameWithPath =
             nodeDir
-            <> "/"
             <> show (hashTestFromDHTNode me)
             <> "/"
             <> show keyTest
@@ -437,6 +423,8 @@ retrieveHandler
 
           (ClientErrorResponse err) -> do
             print err
+
+
 
 retrieveFinishedHandler :: ServerRequest 'Normal RETRIEVERESPONSE RETRIEVEACK ->
   IO (ServerResponse 'Normal RETRIEVEACK)
@@ -507,7 +495,7 @@ transferHandler me transferStream@(ServerReaderRequest _metadata recv) = do
     (Right (Just (TRANSFER key value keyTest))) -> do
       -- guardar arquivo na minha pasta
       BS.writeFile
-        (nodeDir <> "/" <> show (hashTestFromDHTNode me) <> "/" <> show keyTest)
+        (nodeDir <> show (hashTestFromDHTNode me) <> "/" <> show keyTest)
         value
       transferHandler me transferStream
 
