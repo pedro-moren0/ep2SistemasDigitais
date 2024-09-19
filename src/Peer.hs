@@ -34,7 +34,6 @@ menuOptionList =
   \5 - STORE\n\
   \6 - RETRIEVE\n\
   \d - CHECK FILE HASH\n\
-  \x - QUIT\n\
   \=============================\n\
   \"
 
@@ -87,7 +86,6 @@ tui host port = do
           fileName <- getLine
           retrieve me mSucc fileName
           loop me mPred mSucc
-        "x" -> return ()
         "d" -> do
           putStrLn "Digite o nome do arquivo (com extensão):"
           fileName <- getLine
