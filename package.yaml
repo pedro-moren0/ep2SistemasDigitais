@@ -31,6 +31,12 @@ dependencies:
 - bytestring
 - text
 - aeson
+- hashable
+- directory
+- iproute
+- cryptonite
+- memory
+- binary
 
 ghc-options:
 - -Wall
