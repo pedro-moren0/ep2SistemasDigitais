@@ -1,0 +1,120 @@
+syntax = "proto3";
+
+package chord;
+
+service Chord {
+  rpc JoinV2(JOIN) returns (JOIN_REQUESTED) {}
+  rpc JoinOk(JOIN_OK) returns (JOIN_SUCCESSFUL) {}
+  rpc NewNode (NEW_NODE) returns (NEW_NODE_OK) {}
+  rpc Leave (LEAVE) returns (LEAVE_OK) {}
+  rpc NodeGone (NODE_GONE) returns (NODE_GONE_OK) {}
+  rpc Store (STORE) returns (STORE_REQUESTED) {}
+
+  rpc Retrieve (RETRIEVE) returns (RETRIEVE_ACK) {}
+  rpc RetrieveFinished (RETRIEVE_RESPONSE) returns (RETRIEVE_ACK) {}
+
+  rpc Transfer (stream TRANSFER) returns (TRANSFER_OK) {}
+
+  rpc Join(JOIN) returns (JOIN_OK) { option deprecated = true; }
+  rpc Route (ROUTE) returns (ROUTE_OK) { option deprecated = true; }
+}
+
+message JOIN_REQUESTED { }
+
+message JOIN_SUCCESSFUL { }
+
+message JOIN {
+  fixed64 joinedId = 11;
+  string joinedIp = 12;
+  uint32 joinedPort = 13;
+  int32 joinedIdTest = 2003;
+}
+
+message JOIN_OK {
+  fixed64 joinedId = 17;
+  string predIp = 18;
+  uint32 predPort = 19;
+  string succIp = 20;
+  uint32 succPort = 21;
+  int32 joinedIdTest = 2004;
+}
+
+message NEW_NODE {
+  string succIp = 22;
+  uint32 succPort = 23;
+}
+
+message NEW_NODE_OK { }
+
+message LEAVE {
+  fixed64 predId = 14;
+  string predIp = 15;
+  uint32 predPort = 16;
+  int32 predIdTest = 2005;
+}
+
+message LEAVE_OK { }
+
+message NODE_GONE {
+  fixed64 succId = 24;
+  string succIp = 25;
+  uint32 succPort = 26;
+  int32 succIdTest = 2006;
+}
+
+message NODE_GONE_OK { }
+
+message STORE {
+  fixed64 key = 3;
+  int32 size = 4;
+  bytes value = 5;
+  int32 keyTest = 2000;
+}
+
+message STORE_REQUESTED { }
+
+message RETRIEVE {
+  fixed64 key = 6;
+  fixed64 requirerId = 7;
+  int32 requirerIdTes = 8;
+  string requirerIp = 9;
+  uint32 requirerPort = 10;
+  int32 keyTest = 2001;
+}
+
+message RETRIEVE_ACK { }
+
+message OK {
+  fixed64 key = 27;
+  int32 size = 28;
+  bytes value = 29;
+  int32 keyTest = 2007;
+}
+
+message NOT_FOUND { }
+
+message RETRIEVE_RESPONSE {
+  oneof response {
+    OK ok = 33;
+    NOT_FOUND notFound = 34;
+  }
+}
+
+message TRANSFER {
+  fixed64 key = 1;
+  bytes value = 2;
+  int32 keyTest = 2002;
+}
+
+message TRANSFER_OK { }
+
+message ROUTE {
+  option deprecated = true;
+  oneof routedMessage {
+    JOIN join = 30;
+    STORE store = 31;
+    RETRIEVE retrieve = 32;
+  }
+}
+
+message ROUTE_OK { option deprecated = true; }
