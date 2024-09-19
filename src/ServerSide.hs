@@ -275,7 +275,7 @@ storeHandler
   me
   mPred
   mSucc
-  (ServerNormalRequest _meta storeMsg@(STORE key _ value keyTest)) = do
+  (ServerNormalRequest _meta storeMsg@(STORE _ _ value keyTest)) = do
     -- acessa o predecessor deste no e faz o lock nessa variavel
     pred <- takeMVar mPred
 
@@ -431,7 +431,7 @@ retrieveFinishedHandler :: ServerRequest 'Normal RETRIEVERESPONSE RETRIEVEACK ->
 -- caminho feliz: o arquivo foi encontrado e entregue
 retrieveFinishedHandler
   (ServerNormalRequest _metadata (RETRIEVERESPONSE
-    (Just (RETRIEVERESPONSEResponseOk (OK key _ value keyTest))))) = do
+    (Just (RETRIEVERESPONSEResponseOk (OK _ _ value keyTest))))) = do
   putStrLn "Arquivo encontrado! Salvando na pasta downloads..."
   BS.writeFile ("downloads/" <> show keyTest) value
   return $ ServerNormalResponse RETRIEVEACK [] StatusOk ""
@@ -492,7 +492,7 @@ transferHandler me transferStream@(ServerReaderRequest _metadata recv) = do
         $ ServerReaderResponse Nothing [] StatusDataLoss "erro no TRANSFER"
 
     -- caso chegou mensagem
-    (Right (Just (TRANSFER key value keyTest))) -> do
+    (Right (Just (TRANSFER _ value keyTest))) -> do
       -- guardar arquivo na minha pasta
       BS.writeFile
         (nodeDir <> show (hashTestFromDHTNode me) <> "/" <> show keyTest)
